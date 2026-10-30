@@ -175,3 +175,9 @@ After reading `docs/prompts/KARTHIK_Codex_Prompts.md`, Karthik explicitly chose:
 - LLM availability is separate from deterministic grading.
 - Review status: full backend Vitest run reported 255 passed and 9 auth integration tests skipped. The skipped tests require isolated PostgreSQL verification.
 - Follow-up integration: reconcile report task filtering and scoring with Pranav's P11 changes before merging.
+
+## K5 validation receipt scope and Master performance naming
+
+- The current private task contract declares neither machine-readable statement examples nor a brute-force oracle. The examples receipt therefore says "No statement examples declared; covered by visible tests". It is not proof that prose examples were executed.
+- The differential receipt currently establishes only "Reference deterministic across 3 runs (no brute-force oracle supplied)". It does not claim reference/oracle comparisons or randomized differential cases. K6 must add and execute a supported oracle before claiming differential validation.
+- Master performance tests must have a trusted test ID matching `/performance|perf|large_window/i` (for example `tests/test_hidden.py::test_large_window`). At least one such test is required; each must pass on all three reference runs and fail on the starter. The trusted test supplies the actual input size and timing assertion. This does not establish a brute-force timing comparison.

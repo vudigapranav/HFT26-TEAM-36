@@ -169,7 +169,7 @@ export function createValidationEngine(runTests: Ports['runTests']): Ports['vali
     add('format', imports.format_errors?.length ? 'fail' : 'pass',
       imports.format_errors?.length ? 'Unsupported test structure' : 'Static runner format checks passed');
 
-    add('examples', 'pass', 'Visible tests match the manifest');
+    add('examples', 'pass', 'No statement examples declared; covered by visible tests');
     add('leakage', leakFree(task) ? 'pass' : 'fail',
       leakFree(task) ? 'No detected solution leakage' : 'Starter or hints expose reference logic');
 
@@ -231,7 +231,7 @@ export function createValidationEngine(runTests: Ports['runTests']): Ports['vali
       r.tests.map(t => `${t.id}:${t.status}`).sort().join('|');
     const stable = referenceRuns.every(r => signature(r) === signature(referenceRuns[0]!));
     add('differential', stable ? 'pass' : 'fail',
-      stable ? 'Reference results deterministic' : 'Reference results inconsistent');
+      stable ? 'Reference deterministic across 3 runs (no brute-force oracle supplied)' : 'Reference results inconsistent');
 
     const perfIds = task.tests.flatMap(t => t.ids)
       .filter(id => /performance|perf|large_window/i.test(id));

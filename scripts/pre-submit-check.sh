@@ -2,12 +2,12 @@
 # P12 — pre-submission check (owner: Pranav). Run from anywhere inside the repo:
 #   bash scripts/pre-submit-check.sh
 # Needs pnpm + uv set up (see README "Setup"). For the attack suite, start the backend first in auth mode on
-# http://127.0.0.1:3001 (the address scripts/attack-api.py uses), e.g. APP_MODE=auth RUNNER=docker ... pnpm dev.
+# http://127.0.0.1:3001, e.g. deploy/start.sh. Another address: TORQUECODE_API=http://127.0.0.1:3002 bash scripts/pre-submit-check.sh
 # Prints a ✅/❌ checklist and exits 1 if anything failed. Never prints secret values, only file:line locations.
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-API="http://127.0.0.1:3001"
+API="${TORQUECODE_API:-http://127.0.0.1:3001}"
 LOG="$(mktemp -d)"
 trap 'rm -rf "$LOG"' EXIT
 RESULTS=()
@@ -28,9 +28,9 @@ fi
 
 echo "== 3/4 attack suite against $API"
 if curl -sf -o /dev/null --max-time 5 "$API/health"; then
-  python3 scripts/attack-api.py >"$LOG/attack.txt" 2>&1
-  summary="$(grep -E '^[0-9]+ pass / [0-9]+ fail$' "$LOG/attack.txt" | tail -n 1)"
-  if [[ "$summary" =~ ^[0-9]+\ pass\ /\ 0\ fail$ ]]; then ok "attack suite — $summary"
+  TORQUECODE_API="$API" python3 scripts/attack-api.py >"$LOG/attack.txt" 2>&1
+  summary="$(grep -E '^[0-9]+ pass / [0-9]+ fail( \([0-9]+ skipped\))?$' "$LOG/attack.txt" | tail -n 1)"
+  if [[ "$summary" =~ ^[0-9]+\ pass\ /\ 0\ fail ]]; then ok "attack suite — $summary"
   else fail "attack suite — ${summary:-did not finish}"; grep -E '^❌|Error|Traceback' "$LOG/attack.txt" | head -n 20; fi
 else
   fail "attack suite — no backend at $API (start it in auth mode, then re-run)"
