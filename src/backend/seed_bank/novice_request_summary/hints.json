@@ -1,0 +1,5 @@
+[
+  "Check which array elements the loop visits.",
+  "Trace the indices for a one-element list and a list whose largest count is last.",
+  "Compare the loop's stopping point with the number of days. Every day must be considered."
+]

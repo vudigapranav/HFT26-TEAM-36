@@ -1,0 +1,14 @@
+{
+  "name": "@torquecode/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./dist/public.d.ts", "default": "./dist/public.js" },
+    "./http": { "types": "./dist/http.d.ts", "default": "./dist/http.js" }
+  },
+  "files": ["dist/public.*", "dist/http.*"],
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": { "typebox": "1.4.3" },
+  "devDependencies": { "typescript": "7.0.2" }
+}

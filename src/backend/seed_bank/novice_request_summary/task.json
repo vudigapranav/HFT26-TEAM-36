@@ -1,0 +1,14 @@
+{
+  "task_id": "seed-novice-request-summary",
+  "tier": "novice",
+  "domain": "backend",
+  "language": "python",
+  "task_type": "bug_fix",
+  "title": "Fix the request-volume summary",
+  "statement_md": "An operations dashboard reports the largest request count across a list of daily counts. Fix peak_requests in app/summary.py: it currently misses some days. Counts are non-negative integers; an empty list returns 0. Examples: [2, 7, 3] returns 7; [2, 3, 9] returns 9. Preserve existing behavior. Only app/summary.py is editable.",
+  "dsa_topics": ["arrays"],
+  "source": "seed_bank",
+  "limits": { "wall_time_ms": 5000, "memory_mb": 128, "cpu_count": 1, "pids": 32, "output_bytes": 65536 },
+  "f2p_ids": ["tests/test_visible.py::test_last_day_peak", "tests/test_hidden.py::test_single_day"],
+  "p2p_ids": ["tests/test_visible.py::test_middle_day_peak", "tests/test_hidden.py::test_empty", "tests/test_hidden.py::test_zero_counts"]
+}
