@@ -22,7 +22,7 @@ Full text: `docs/TorqueCode_Context.md` §5 and §15 (Q1/Q3). Anything in older 
 - **Same-origin through Vercel:** the Vercel app rewrites `/api/:path*` → `https://<backend-host>/:path*`. The browser only ever talks to the Vercel origin, so cookies stay first-party (`__Host-`, Secure, SameSite=Lax) and **no CORS** is added. `AUTH_ORIGIN` = the Vercel production URL.
 - **Behind that proxy the backend must read the client IP from a trusted proxy header** (e.g. `x-forwarded-for` / `x-real-ip`, only when an explicit `TRUST_PROXY` setting is on); otherwise every user shares Vercel's IP and the login rate limit blocks everyone.
 - **This is a shipping app, not a demo toy:** everything a candidate creates (profile, assessment, question sets, files, runs, events, reports, report history per user) is stored in **PostgreSQL**, survives restarts, and has no 100-item in-memory cap (Karthik, K11).
-- **All the AI must work for real:** live Featherless task generation + the deterministic validation engine (K5/K6) are now **Rithvik's** (after R6), with the seed bank as the fallback; the guarded assistant goes live in K10.
+- **All the AI must work for real** (updated 04:17): **Karthik builds K5** (deterministic validation engine) right after K10, then **K11**; **Rithvik builds K6** (live Featherless generation) on top of K5, plus R6b cloud deployment. Generated tests are **structured data rendered by a trusted template**, never trusted LLM-written Python. The seed bank stays the fallback; the guarded assistant is live since K10.
 - Admin panel: not needed.
 
 ## Always-loaded project context

@@ -83,8 +83,8 @@ The areas below are owned folders. Karthik can rename them or decide their inter
 |---|---|---|
 | `src/backend/api/` | App entry, config, database, login, sessions/timer/tiers, all endpoints, background jobs | Karthik |
 | `src/backend/contracts/` | **The shared data models** (Portfolio, CandidateProfile, TaskSpec, RunResult, Event, Report, …) — the single source everyone uses | Karthik (others request changes) |
-| `src/backend/generation/` | Task generation, validation engine, generation prompts | Karthik → **Rithvik owns K5/K6 from 31 Oct 03:50** (both may edit) |
-| `src/backend/tools/` | Code-analysis scripts that work on candidate code (stubbing, bug injection, topic scan, import check) | Karthik → **Rithvik (K5/K6) from 31 Oct 03:50** (both may edit) |
+| `src/backend/generation/` | Task generation, validation engine, generation prompts | Karthik (K5 validation) + Rithvik (K6 generation), from 31 Oct 04:17 (both may edit) |
+| `src/backend/tools/` | Code-analysis scripts that work on candidate code (stubbing, bug injection, topic scan, import check) | Karthik (K5) + Rithvik (K6), from 31 Oct 04:17 (both may edit) |
 | `src/backend/seed_bank/` | Hand-verified fallback tasks | Karthik, Aryan |
 | `src/backend/runner/` | Sandbox runner, grading, anti-tamper, runner images. Includes a simple **local stand-in runner** that Karthik adds in K1 and Rithvik replaces. | Rithvik (stand-in: Karthik) |
 | `src/backend/llm/` | Featherless client + queue, guarded assistant, hint serving, assistant prompts | Rithvik |
