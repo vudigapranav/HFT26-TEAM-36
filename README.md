@@ -3,7 +3,7 @@
 > **Team PAARK · `HFT26-TEAM-36` · CBIT Hacktoberfest '26**
 > Problem statement: **Portfolio-Driven Adaptive Coding & Technical Assessment Platform**
 
-🎥 **Demo:** _link coming soon_ · 🌐 **Live URL:** _link coming soon_
+🎥 **Demo video:** _TODO: add link_ · 🌐 **Live URL:** _TODO: add link_ · ▶️ **How to run the demo:** [`deploy/README.md`](deploy/README.md)
 
 ---
 
@@ -83,7 +83,7 @@ Portfolio JSON ──► Onboarding quiz ──► 60-minute assessment ──�
 
 ## ✅ What's real today vs. what's next
 
-Merged into `main` and covered by tests:
+Merged into `main` and covered by tests (checked at `main` @ `462c530`):
 
 | Area | Status |
 | :--- | :--- |
@@ -92,16 +92,19 @@ Merged into `main` and covered by tests:
 | Onboarding quiz with claimed-skills-only focus lane | ✅ merged |
 | Assessment API: create session, server-side timer, autosave, Run, Submit, hint ladder, integrity events, auto-submit at expiry | ✅ merged (one Novice seed task) |
 | Docker sandbox runner wired into the API (`RUNNER=docker`) | ✅ merged |
+| Anti-tamper grading: split containers, candidate code never sees the tests or the report (R3) | ✅ merged |
+| Adept + Master seed tasks (multi-file feature; debugging with a performance limit) | ✅ merged as task files; not yet served by the API |
 | AI efficiency score (context §12 rules) and report builder | ✅ merged |
-| Featherless client (single queue, retries) and guarded assistant + hint provider | ✅ merged as modules; not yet wired into the API |
+| Featherless client (single queue, retries) and guarded assistant + hint provider, measured against the live model (R5-live) | ✅ merged as modules; not yet wired into the API |
+| Question-set unlock rule (one 60-minute timer; attempt every question → "Unlock next questions", max 2; levels never named in the UI) | ✅ decided and documented; API flow in progress |
 
-In progress during the hackathon: the question-set unlock flow and assistant endpoints, Adept + Master seed tasks, the validation engine, live task generation, sandbox anti-tamper hardening, deployment and the frontend.
+In progress during the hackathon: the question-set unlock flow and assistant endpoint in the API (K10), the validation engine, live task generation, demo-machine deployment (R6) and the frontend.
 
 **Future scope (pitch only, not built):** project-based assessments built around the candidate's own repositories, and camera-based proctoring.
 
 ## 🚀 Setup
 
-Deployment on the demo machine is documented in [`deploy/README.md`](deploy/README.md) (added with deployment task R6).
+**How to run the demo:** see [`deploy/README.md`](deploy/README.md) (added with deployment task R6; until it lands, use the commands below).
 
 Local development, from the repository root (Node 24.22.1+, pnpm 11, uv, Python 3.13; PostgreSQL 16 and Docker for the full flow):
 
@@ -125,7 +128,7 @@ Copy `.env.example` to `.env` for local secrets. `.env` is git-ignored; never co
 
 ## 🔒 Security and integrity design
 
-- **Sandbox.** Each Run/Submit is a fresh container: `--network none`, memory/CPU/process (`--pids-limit`) limits, read-only root filesystem with a small `noexec` tmpfs, non-root user `10001`, `--cap-drop ALL`, `no-new-privileges`, wall-clock timeout with kill, capped output. Tests are parsed per test ID from JUnit XML, never from the exit code alone.
+- **Sandbox.** Each Run/Submit uses fresh containers, split in two: an untrusted **worker** with only the candidate's code, and a trusted **grader** with the tests. Candidate code never sees the test files, expected answers or the report. Both containers get `--network none`, memory/CPU/process (`--pids-limit`) limits, read-only root filesystem with a small `noexec` tmpfs, non-root user `10001`, `--cap-drop ALL`, `no-new-privileges`, wall-clock timeout with kill, capped output. The grade comes from the grader's own report stream, never from the candidate's exit code.
 - **Hidden tests never leave the server.** Run uses visible tests only; Submit adds hidden tests. The browser gets hidden-test aggregates only (no test code, names or expected output), and Submit stdout/stderr are discarded. Reference solutions and hint ladders are server-only; public responses are projected through explicit allow-lists.
 - **Candidates can only edit allow-listed files.** Test, config, unknown and path-traversal paths are rejected before the runner is called.
 - **Guarded assistant (Adept/Master).** Layered: the model never sees reference solutions or hidden tests; an input guard catches extraction attempts; a deterministic output guard limits code volume, blocks task-function redefinitions and, when given the reference through a server-side resolver, checks similarity to it. The reference never enters the model's context. Every reply and block is logged.
@@ -138,7 +141,7 @@ Copy `.env.example` to `.env` for local secrets. `.env` is git-ignored; never co
 - TorqueCode verifies skills consistent with the portfolio, not authorship of the listed projects (it sees JSON, not repositories).
 - It can't stop AI use on another device; it logs integrity signals only. Camera proctoring is future scope.
 - Generated difficulty is approximate; different candidates get different tasks.
-- The sandbox is hackathon-grade. Candidate code currently shares the pytest interpreter with the tests, which is being hardened (task R3); production would need stronger isolation.
+- The sandbox is hackathon-grade, standard Docker isolation. Hidden-test **inputs** reach candidate code because it receives the arguments; only test source and expected outputs are secret. Production would need stronger isolation.
 - Assistant guards are heuristics, and AI hints can occasionally be wrong; hints are never used for grading.
 
 ## 📁 Repository layout

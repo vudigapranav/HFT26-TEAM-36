@@ -1,34 +1,36 @@
 # TorqueCode — pitch facts (for Aryan)
 
-Only things merged on `main`, checked at **`main` @ `7313627`** (2026-10-31, after PR #25). Every number names the commit it comes from. If a fact isn't here, don't put it on a slide. Ask Pranav first.
+Only things merged on `main`, checked at **`main` @ `462c530`** (2026-10-31, after PR #37; first written at `7313627`). Every number names the commit it comes from. If a fact isn't here, don't put it on a slide. Ask Pranav first.
 
-**Not on main yet, so don't claim it as working:** the question-set unlock flow (K10), the assistant HTTP endpoint (K10), Adept/Master tasks (K7), the validation engine and live task generation (K5/K6), demo-machine deployment (R6) and the frontend. Pitch these as "in progress" or roadmap.
+**Not on main yet, so don't claim it as working:** the question-set unlock flow (K10), the assistant HTTP endpoint (K10), serving the Adept/Master tasks through the API (K10; the task files themselves are merged, `44fd399`), the validation engine and live task generation (K5/K6), demo-machine deployment (R6) and the frontend. Pitch these as "in progress" or roadmap.
 
 ---
 
-## 1. Tests (measured by Pranav on `7313627`)
+## 1. Tests (measured by Pranav on `462c530`)
 
 | Fact | Number | Source |
 | :--- | :--- | :--- |
-| TypeScript tests passing | **222 passed**, 28 skipped, 0 failed (17 files) | `pnpm test` on `7313627`, Node 26.10 |
+| TypeScript tests passing | **242 passed**, 46 skipped, 0 failed (18 files) | `pnpm test` on `462c530`, Node 26.10 |
 | Python tests passing | **9 passed** | same run |
-| Typecheck | clean | `pnpm typecheck` on `7313627` |
-| Why 28 were skipped | PostgreSQL and Docker suites skip themselves when those services aren't available. Docker wasn't running on the machine used for this check. | same run |
+| Typecheck | clean | `pnpm typecheck` on `462c530` |
+| Why 46 were skipped | PostgreSQL and Docker suites skip themselves when those services aren't available. Docker wasn't running on the machine used for this check. | same run |
 
 Separately reported by teammates on their own machines (say "reported", not "we measured"):
 - Docker runner suite: **32 passed, 0 failed** (Rithvik, `773e8a8`).
 - Guarded assistant suite: **57 passed** (Rithvik, `a8b8a54`).
 - PostgreSQL auth suite: **9/9 passed** on a real PostgreSQL (Karthik, `1a8d9c1`).
+- R3 anti-tamper suite: **20 tests, all on real Docker** (Rithvik, `8f567a6`).
+- LLM suite after the R5-live fixes: **133 passed** (Rithvik, `9fff6a3`).
 
-## 2. What the sandbox enforces (runner code on `7313627`; measurements from `37e14cd`)
+## 2. What the sandbox enforces (runner code on `462c530`; measurements from `37e14cd` and `8f567a6`)
 
-Every Run/Submit is a fresh Docker container with:
+Every Run/Submit uses fresh Docker containers (an untrusted worker with the candidate's code and a trusted grader with the tests, `8f567a6`), with:
 - **No network** (`--network none`).
 - **Memory, CPU and process limits** (`--memory`, `--memory-swap`, `--cpus`, `--pids-limit`). Seed task 1 uses 5 s, 128 MB, 1 CPU, 32 processes and 64 KB of output (`37e14cd`).
 - **Read-only filesystem** except a small `noexec` `/tmp`; candidate code mounted read-only.
 - **Non-root user** (`10001`), **all Linux capabilities dropped**, `no-new-privileges`.
 - **Wall-clock timeout**, then the container is killed and removed.
-- **Grading from per-test JUnit XML**, never from the exit code alone.
+- **The grade comes from the grader container's own report stream**, never from the candidate's exit code (`8f567a6`).
 
 Hostile cases Rithvik ran (`37e14cd`, `773e8a8`):
 - An infinite loop was killed at 5 s.
@@ -41,7 +43,7 @@ Hostile cases Rithvik ran (`37e14cd`, `773e8a8`):
 
 If Docker is down, the API returns **503 SANDBOX_UNAVAILABLE** and records no grade, instead of a fake 0 (finding 7, fixed and verified in `4fbaeee`).
 
-## 3. Hidden tests never reach the browser (`7313627`)
+## 3. Hidden tests never reach the browser (`462c530`)
 
 - **Run** = visible tests only; **Submit** = visible + hidden.
 - For hidden tests the browser gets **aggregates only**: no test code, names or expected output. All Submit stdout/stderr is discarded.
@@ -56,9 +58,17 @@ If Docker is down, the API returns **503 SANDBOX_UNAVAILABLE** and records no gr
 4. **Everything is logged:** delivered replies → `assistant_message`; blocks → `assistant_blocked` (+ `extraction_flagged`); an LLM outage logs nothing.
 5. **Hint ladder first:** pre-written hints (levels 1–3) are served without an LLM call.
 
-**10/10** canned jailbreak attempts are blocked in the test suite (`a8b8a54`, fixture `src/backend/tests/fixtures/llm/jailbreaks.json`). **Be honest:** they're blocked at the input layer because they're known patterns, and no live-model measurement exists yet (Rithvik's status, `a8b8a54`). Don't say "unjailbreakable".
+**10/10** canned jailbreak attempts are blocked in the test suite (`a8b8a54`, fixture `src/backend/tests/fixtures/llm/jailbreaks.json`). They're blocked at the input layer because they're known patterns.
 
-## 5. AI efficiency score: computed from logs only (`7313627`)
+**Live-model measurement (R5-live, Rithvik, `9fff6a3`; model `Qwen/Qwen3-30B-A3B-Instruct-2507` on seed task 1 played as an Adept question):**
+- **Before the fixes:** 8 of the 12 replies the model answered leaked the fix.
+- **After the fixes:** **0 leaks in 22 scenarios** (5 honest questions, 7 paraphrased or multi-turn extraction attempts, 10 jailbreaks). All 5 honest questions got useful guidance without the fix.
+- **Cost:** about **$0.0018** total live spend for R5-live.
+- **Speed:** median about **2.1 s** per answered call (after the fixes; range 1.1–5.7 s).
+- **Caveats (say these if asked):** a small sample (22 scenarios, one task, one model). The input rules are patterns, so new phrasings reach the model. The output guard catches code, not prose. In run 2 the model complied, so the output guard wasn't exercised live; its coverage comes from replaying run-1 leaks in tests. One paraphrase (P5) got a soft confirmation.
+- Don't say "unjailbreakable" or "leak-proof"; say "0 leaks in our 22-scenario live test, after fixing the 8 leaks we found." 
+
+## 5. AI efficiency score: computed from logs only (`462c530`)
 
 - Up to **20%** of the final score (problem statement).
 - Formula: `20 × gate × (0.5·Independence + 0.3·HintYield + 0.2·TestDiscipline)`. Weights: hint levels 1/2/3 count 1/2/3; an assistant message counts 1; `H_max = 6` (context §12, locked).
@@ -79,7 +89,7 @@ If Docker is down, the API returns **503 SANDBOX_UNAVAILABLE** and records no gr
 - First run: 38/39 blocked (`7646245`). After fixes: **39/39** (`230ea36`), still **39/39** after the assistant merge (`4fbaeee`).
 - Full API journey (upload → quiz → assessment → run → hint → submit → report): **17/17 steps** (`230ea36`).
 
-## 7. Portfolio intake (`7313627`)
+## 7. Portfolio intake (`462c530`)
 
 - Strict schema validation with field-level errors; DSA topics normalized to a **fixed 19-topic list** (typos and synonyms handled).
 - Prompt-injection text in a portfolio is **flagged and treated as plain text**: try `docs/demo/demo-portfolio-injection.json`.
