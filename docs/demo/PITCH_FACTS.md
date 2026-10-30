@@ -2,7 +2,7 @@
 
 Only things merged on `main`, checked at **`main` @ `7313627`** (2026-10-31, after PR #25). Every number names the commit it comes from. If a fact isn't here, don't put it on a slide. Ask Pranav first.
 
-**Not on main yet, so don't claim it as working:** the three-tier flow with Upgrade (K10), the assistant HTTP endpoint (K10), Adept/Master tasks (K7), the validation engine and live task generation (K5/K6), demo-machine deployment (R6) and the frontend. Pitch these as "in progress" or roadmap.
+**Not on main yet, so don't claim it as working:** the question-set unlock flow (K10), the assistant HTTP endpoint (K10), Adept/Master tasks (K7), the validation engine and live task generation (K5/K6), demo-machine deployment (R6) and the frontend. Pitch these as "in progress" or roadmap.
 
 ---
 
