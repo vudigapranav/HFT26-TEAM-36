@@ -25,15 +25,13 @@ Hostile and benign candidate submissions for the sandbox. Used today by
 | `hard_exit` | `os._exit(0)` at import: exit code 0, no results | error | verdict from XML, never the exit code |
 | `delete_tests` | `rmtree /work/tests` at import | fail | `/work` mounted read-only |
 | `conftest_override` | conftest hook rewrites every result to passed | fail | runner drops candidate conftest, writes empty ones |
-| `forge_report` | `atexit` overwrites `/out/results.xml` with all-pass | fail (**known gap**) | not solved yet, see below |
+| `forge_report` | `atexit` overwrites `/out/results.xml` with all-pass | fail | R3: no report path exists in the candidate container |
 | `isolation_probe` | trusted probes: non-root, no network/DNS, read-only root and `/work`, writable `/tmp`, no secrets in env | pass | the docker run flags |
 
 Checked on host pytest without Docker: `ok`, `buggy`, `syntax_error`, `exit_at_import`,
 `hard_exit` and `conftest_override` give the expected verdicts. With its conftest left in
 place, `conftest_override` reports 4 passed on buggy code, so the fixture is a real attack.
 
-**Known gap (`forge_report`, for R3):** candidate code runs in the same process as pytest,
-so it can rewrite the results file after pytest writes it (or patch pytest at import).
-Reading the file outside the container doesn't help. Options for R3: run the grading
-harness in a separate process from candidate code, or compare outputs outside the sandbox
-(context §10.1 A5).
+**R3 (split containers):** the API runner (`dockerRunner.ts`) now runs tests in a separate trusted
+container, so `forge_report` and test-file reading have no effect (see `runner/harness/README.md`).
+`sandbox-check.sh` is the original single-container R0 probe and still shows `forge_report` as a GAP there.

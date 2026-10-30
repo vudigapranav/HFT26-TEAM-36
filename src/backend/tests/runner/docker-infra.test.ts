@@ -32,7 +32,7 @@ const expectDown = (result: SeamResult<InternalRunResult>) => {
 // Fake docker CLI driven by a mode file (re-read per call).
 const scratch = mkdtempSync(join(tmpdir(), 'torquecode-fake-docker-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
-const fake = (mode: string, extra: { controlTimeoutMs?: number } = {}) => {
+const fake = (mode: string, extra: { controlTimeoutMs?: number; startupBudgetMs?: number } = {}) => {
   const modeFile = join(scratch, `mode-${Math.random().toString(36).slice(2)}`);
   writeFileSync(modeFile, mode);
   const runner = createDockerRunner({
@@ -66,7 +66,7 @@ describe('infrastructure failures (fake docker CLI, deterministic)', () => {
 
   it('run hangs and the daemon dies: the CLI is force-killed and the result is unavailable, not timeout', async () => {
     const started = Date.now();
-    const result = await fake('run-hangs-daemon-dies', { controlTimeoutMs: 500 }).runner(request(undefined, { limits: { ...limits, wall_time_ms: 300 } }), ctx());
+    const result = await fake('run-hangs-daemon-dies', { controlTimeoutMs: 500, startupBudgetMs: 500 }).runner(request(undefined, { limits: { ...limits, wall_time_ms: 300 } }), ctx());
     expectDown(result);
     expect(Date.now() - started).toBeLessThan(10_000);
   });
@@ -77,12 +77,19 @@ describe('infrastructure failures (fake docker CLI, deterministic)', () => {
     if (result.kind === 'ok') expect(result.value.tests.every(test => test.status === 'error')).toBe(true);
   });
 
-  it('normal failing pytest run is graded, and docker CLI noise is removed from stderr', async () => {
+  it('normal failing pytest run is graded, and docker CLI noise is removed from the output', async () => {
     const result = await fake('fail-with-noise').runner(request(), ctx());
     expect(result).toMatchObject({ kind: 'ok', value: { passed: 1, total: 2 } });
     if (result.kind !== 'ok') throw new Error('expected ok');
-    expect(result.value.stderr).toContain('candidate stderr line');
+    expect(result.value.stdout).toContain('grader pytest line');
     expectNoLeak(result);
+  });
+
+  it.each(['worker-garbage', 'worker-wrong-id'])('malformed worker IPC (%s) is a candidate fault: graded error, never relayed', async mode => {
+    const { runner } = fake(mode, { controlTimeoutMs: 1000 });
+    const result = await runner(request(), ctx());
+    expect(result).toMatchObject({ kind: 'ok', value: { passed: 0, total: 2 } });
+    if (result.kind === 'ok') expect(result.value.tests.every(test => test.status === 'error')).toBe(true);
   });
 
   it('missing docker binary: unavailable with a generic message', async () => {

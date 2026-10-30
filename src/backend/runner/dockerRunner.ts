@@ -1,16 +1,21 @@
-// Real runTests seam (R2): runs candidate Python + trusted pytest tests in an
-// isolated Docker container. Flags proved in R0 (docs/status/rithvik.md).
+// Real runTests seam (R2 + R3 split-container grading).
 //
-// Limitation (R3): candidate code runs in the same interpreter as the tests, so
-// it can introspect them at runtime. The grade is fail-closed (exit code and
-// JUnit report must agree), but this is not a confidentiality boundary.
+// Trust boundary (R3): every run uses TWO containers from the same image.
+// - worker (UNTRUSTED): the candidate's files + read-only harness. No tests, no expected
+//   values, no report path, nothing writable but a small tmpfs. Task limits apply here.
+// - grader (TRUSTED): tests + pytest. Candidate modules are proxies; each call is one JSON
+//   line that this host relays to the worker and the reply back, with strict framing,
+//   size caps, one call in flight and id checks. The report leaves the grader on its own
+//   protocol stream, so candidate code can neither read hidden tests nor touch the grade.
+// Candidates DO see the arguments their functions are called with (including hidden-test
+// inputs). Tasks must call candidate functions with plain data (see runner/harness/protocol.py).
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, resolve, sep } from 'node:path';
-import type { Context, InternalRunResult, Limits, RunRequest, SeamResult, TestFile } from '../contracts/internal.js';
-import { grade } from './junit.js';
+import { fileURLToPath } from 'node:url';
+import type { Context, InternalRunResult, Limits, RunRequest, SeamResult, TestFile, TestResult } from '../contracts/internal.js';
 
 export type DockerRunnerOptions = {
   image?: string;
@@ -19,20 +24,25 @@ export type DockerRunnerOptions = {
   dockerArgs?: string[];
   /** Upper bound for health checks and kill/rm cleanup calls. */
   controlTimeoutMs?: number;
+  /** Infrastructure allowance (container start, pytest collection) on top of the candidate's wall_time_ms. */
+  startupBudgetMs?: number;
 };
 
 const DEFAULT_IMAGE = 'torquecode-runner-python:dev';
-const REPORT_MAX_BYTES = 1_048_576;
 const HEALTHY_CACHE_MS = 10_000;
+const MAX_LINE_BYTES = 1_048_576;
+const MAX_CALLS = 10_000;
+const GRADER_LIMITS = { memory_mb: 256, pids: 64 };
+const HARNESS_FILES = ['protocol.py', 'worker.py', 'grade.py'];
 // Candidate-facing messages never carry docker's own text (socket paths, hosts, host paths).
 const SANDBOX_DOWN = 'Sandbox unavailable: the container runtime is not reachable';
 const SANDBOX_START_FAILED = 'Sandbox unavailable: the container could not be started';
 const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/;
 // Files pytest or Python would load as configuration or that would shadow the harness.
 const FORBIDDEN_NAMES = new Set(['conftest.py', 'pytest.ini', 'pyproject.toml', 'setup.cfg', 'tox.ini',
-  'sitecustomize.py', 'usercustomize.py', 'pytest.py', 'pluggy.py']);
+  'sitecustomize.py', 'usercustomize.py', 'pytest.py', 'pluggy.py', 'protocol.py', 'worker.py', 'grade.py']);
 const FORBIDDEN_SEGMENTS = new Set(['__pycache__', '_pytest', 'pytest', 'pluggy']);
-const TRUSTED_INI = '[pytest]\npythonpath = .\njunit_logging = no\njunit_family = xunit1\naddopts =\n';
+const TRUSTED_INI = '[pytest]\naddopts =\n';
 
 const unavailable = (message: string): SeamResult<InternalRunResult> => ({ kind: 'unavailable', code: 'SANDBOX_UNAVAILABLE', message });
 
@@ -131,28 +141,82 @@ function dockerControl(docker: string, args: string[], timeoutMs: number): Promi
 const DOCKER_NOISE = /^(docker: |Error response from daemon|Cannot connect to the Docker daemon|error during connect|Unable to find image|WARNING: )|docker\.sock|dockerDesktopLinuxEngine|docker_engine|npipe:/i;
 const scrubDockerText = (text: string) => text.split('\n').filter(line => !DOCKER_NOISE.test(line)).join('\n');
 
+/** Dotted module names for the candidate's .py files ("app/summary.py" -> "app.summary"). */
+export function candidateModules(files: RunRequest['files']): string[] {
+  return files.filter(file => file.path.endsWith('.py'))
+    .map(file => file.path.slice(0, -3).split('/').filter(part => part !== '__init__').join('.'))
+    .filter(name => name.length > 0);
+}
+
+/** Harness sources (trusted, mounted read-only into both containers). Works from src and from dist. */
+async function harnessDir(): Promise<string> {
+  const candidates = [
+    process.env.RUNNER_HARNESS_DIR,
+    fileURLToPath(new URL('./harness/', import.meta.url)),
+    fileURLToPath(new URL('../../runner/harness/', import.meta.url)),
+  ].filter((dir): dir is string => Boolean(dir));
+  for (const dir of candidates) {
+    if (await stat(join(dir, 'grade.py')).then(() => true, () => false)) return dir;
+  }
+  throw new Error('runner harness not found');
+}
+
 async function writeWorkspace(root: string, input: RunRequest, selected: TestFile[]) {
-  const work = join(root, 'work');
-  const out = join(root, 'out');
-  const write = async (relative: string, content: string) => {
-    const target = resolve(work, ...relative.split('/'));
-    if (!target.startsWith(work + sep)) throw new Error('path escapes workspace');
+  const candidate = join(root, 'candidate');
+  const grader = join(root, 'grader');
+  const harness = join(root, 'harness');
+  const write = async (base: string, relative: string, content: string) => {
+    const target = resolve(base, ...relative.split('/'));
+    if (!target.startsWith(base + sep)) throw new Error('path escapes workspace');
     await mkdir(dirname(target), { recursive: true, mode: 0o755 });
     await writeFile(target, content, { mode: 0o644, flag: 'wx' }); // wx: never overwrite
   };
-  await mkdir(out, { recursive: true });
-  for (const file of input.files) await write(file.path, file.content);
-  // Trusted files are written fresh on every run; candidates cannot supply them.
-  for (const test of selected) await write(test.path, test.content);
-  await write('pytest.ini', TRUSTED_INI);
-  await write('conftest.py', '');
+  // Untrusted side: the candidate's files only. No tests, no config, nothing writable.
+  for (const file of input.files) await write(candidate, file.path, file.content);
+  // Trusted side: tests written fresh every run, our own config, empty conftests.
+  for (const test of selected) await write(grader, test.path, test.content);
+  await write(grader, 'pytest.ini', TRUSTED_INI);
+  await write(grader, 'conftest.py', '');
   for (const directory of new Set(selected.map(test => posix.dirname(test.path)))) {
-    if (directory !== '.') await write(`${directory}/conftest.py`, '');
+    if (directory !== '.') await write(grader, `${directory}/conftest.py`, '');
   }
-  // The container runs as uid 10001: workspace readable, /out writable (R0 technique).
+  const source = await harnessDir();
+  for (const name of HARNESS_FILES) await write(harness, name, await readFile(join(source, name), 'utf8'));
+  await mkdir(candidate, { recursive: true });
+  // Containers run as uid 10001: everything readable, nothing writable.
   await chmod(root, 0o755);
-  await chmod(out, 0o777);
-  return { work, out };
+  return { candidate, grader, harness };
+}
+
+/** Splits a stream into lines; a line over `limit` bytes is reported instead of buffered. */
+function lineReader(limit: number, onLine: (line: string) => void, onOverflow: () => void) {
+  let buffer = Buffer.alloc(0);
+  let overflowed = false;
+  return (chunk: Buffer) => {
+    if (overflowed) return;
+    buffer = Buffer.concat([buffer, chunk]);
+    for (;;) {
+      const newline = buffer.indexOf(0x0a);
+      if (newline < 0) break;
+      const line = buffer.subarray(0, newline).toString('utf8');
+      buffer = buffer.subarray(newline + 1);
+      if (newline > limit) { overflowed = true; onOverflow(); return; }
+      onLine(line);
+    }
+    if (buffer.length > limit) { overflowed = true; onOverflow(); }
+  };
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** A worker reply is forwarded only if it is exactly a reply to the pending request. */
+function validWorkerReply(message: unknown, pendingId: number): message is Record<string, unknown> {
+  if (!isObject(message) || message.id !== pendingId || typeof message.ok !== 'boolean') return false;
+  if (message.ok) return !('error' in message);
+  const error = message.error;
+  return isObject(error) && typeof error.type === 'string' && error.type.length <= 100
+    && (error.message === undefined || typeof error.message === 'string')
+    && (error.where === undefined || typeof error.where === 'string');
 }
 
 export function createDockerRunner(options: DockerRunnerOptions = {}) {
@@ -160,6 +224,7 @@ export function createDockerRunner(options: DockerRunnerOptions = {}) {
   const docker = options.docker ?? 'docker';
   const prefix = options.dockerArgs ?? [];
   const controlTimeoutMs = options.controlTimeoutMs ?? 10_000;
+  const startupBudgetMs = options.startupBudgetMs ?? 20_000;
   const control = (args: string[]) => dockerControl(docker, [...prefix, ...args], controlTimeoutMs);
 
   // Daemon health: a success is cached briefly; a failure is never cached.
@@ -175,108 +240,247 @@ export function createDockerRunner(options: DockerRunnerOptions = {}) {
     context.signal.throwIfAborted();
     const rejected = validateRequest(input);
     if (rejected) return unavailable(`Rejected run request: ${rejected}`);
-    if (!(await daemonHealthy(true))) return unavailable(SANDBOX_DOWN);
-    context.signal.throwIfAborted();
+    const modules = candidateModules(input.files);
+    if (modules.length === 0) return unavailable('Rejected run request: no Python modules');
 
     const selected = input.tests.filter(test => input.mode === 'submit' || test.visibility === 'visible');
     if (selected.length === 0) return unavailable('Rejected run request: no tests selected');
     const expectedIds = selected.flatMap(test => test.ids);
     if (new Set(expectedIds).size !== expectedIds.length) return unavailable('Rejected run request: duplicate test ids');
     const visibility = new Map(selected.flatMap(test => test.ids.map(id => [id, test.visibility] as const)));
+    if (!(await daemonHealthy(true))) return unavailable(SANDBOX_DOWN);
+    context.signal.throwIfAborted();
 
     const root = await mkdtemp(join(tmpdir(), 'torquecode-run-'));
-    const name = `torquecode-run-${randomUUID()}`;
+    const runId = randomUUID();
+    const names = { worker: `torquecode-w-${runId}`, grader: `torquecode-g-${runId}` };
+    const cidfiles = { worker: join(root, 'worker.cid'), grader: join(root, 'grader.cid') };
     let started = false;
     try {
-      const { work, out } = await writeWorkspace(root, input, selected);
-      if (work.includes(',') || out.includes(',')) return unavailable('Workspace path contains a comma');
+      const dirs = await writeWorkspace(root, input, selected);
+      if (Object.values(dirs).some(dir => dir.includes(','))) return unavailable('Workspace path contains a comma');
       const { limits } = input;
-      // Docker writes the container id here once the container exists; outside the mounts.
-      const cidfile = join(root, 'container.id');
-      const args = [
-        ...prefix,
-        'run', '--rm', '--name', name, '--cidfile', cidfile, '--label', 'torquecode.runner=1', '--pull', 'never',
-        '--network', 'none', '--memory', `${limits.memory_mb}m`, '--memory-swap', `${limits.memory_mb}m`,
-        '--cpus', String(limits.cpu_count), '--pids-limit', String(limits.pids),
-        '--read-only', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=64m',
-        '--user', '10001:10001', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
+      const common = (name: string, cidfile: string) => [
+        ...prefix, 'run', '--rm', '-i', '--name', name, '--cidfile', cidfile, '--label', 'torquecode.runner=1', '--pull', 'never',
+        '--network', 'none', '--read-only', '--user', '10001:10001', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
         '--log-opt', 'max-size=1m', '--log-opt', 'max-file=1',
-        '-e', 'PYTEST_DISABLE_PLUGIN_AUTOLOAD=1',
-        '--mount', `type=bind,source=${work},target=/work,readonly`,
-        '--mount', `type=bind,source=${out},target=/out`,
-        '--workdir', '/work',
-        image,
-        // -I: ignore PYTHON* env and keep cwd off sys.path, so candidate files can't
-        // shadow pytest; the trusted ini then adds /work for the task's imports.
-        'python', '-I', '-B', '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
-        '-c', '/work/pytest.ini', '--rootdir', '/work', '--junitxml', '/out/results.xml',
-        ...selected.map(test => test.path),
+        '--mount', `type=bind,source=${dirs.harness},target=/harness,readonly`,
+      ];
+      // Untrusted: candidate code. Task limits apply here.
+      const workerArgs = [
+        ...common(names.worker, cidfiles.worker),
+        '--memory', `${limits.memory_mb}m`, '--memory-swap', `${limits.memory_mb}m`,
+        '--cpus', String(limits.cpu_count), '--pids-limit', String(limits.pids),
+        '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=64m',
+        '--mount', `type=bind,source=${dirs.candidate},target=/work,readonly`, '--workdir', '/work',
+        image, 'python', '-I', '-B', '/harness/worker.py',
+      ];
+      // Trusted: tests and pytest. Never mounts or imports candidate files.
+      const graderArgs = [
+        ...common(names.grader, cidfiles.grader),
+        '--memory', `${GRADER_LIMITS.memory_mb}m`, '--memory-swap', `${GRADER_LIMITS.memory_mb}m`,
+        '--cpus', '1', '--pids-limit', String(GRADER_LIMITS.pids),
+        '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=16m',
+        '-e', `TORQUE_MODULES=${modules.join(',')}`, '-e', 'PYTEST_DISABLE_PLUGIN_AUTOLOAD=1',
+        '--mount', `type=bind,source=${dirs.grader},target=/grade,readonly`, '--workdir', '/grade',
+        image, 'python', '-I', '-B', '/harness/grade.py', '-q', '-p', 'no:cacheprovider',
+        '-c', '/grade/pytest.ini', '--rootdir', '/grade', ...selected.map(test => test.path),
       ];
 
-      const stdout = capped(limits.output_bytes);
-      const stderr = capped(limits.output_bytes);
-      let timedOut = false;
-      let aborted = false;
-      const outcome = await new Promise<{ code: number | null; spawnError?: Error }>(done => {
-        const child = spawn(docker, args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+      const graderOutput = capped(limits.output_bytes); // pytest's report text
+      const candidateOutput = capped(limits.output_bytes); // the candidate's own prints
+      const outcome = await new Promise<RelayOutcome>(done => {
+        const worker = spawn(docker, workerArgs, { shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+        const grader = spawn(docker, graderArgs, { shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
         started = true;
-        active.set(name, { docker, prefix });
-        // Backstop: if the daemon hangs, `docker kill` can't land; kill the CLI itself so this call always ends.
+        // A container that died leaves a closed pipe: EPIPE on write must never crash the API process.
+        for (const child of [worker, grader]) for (const stream of [child.stdin, child.stdout, child.stderr]) stream.on('error', () => {});
+        active.set(names.worker, { docker, prefix });
+        active.set(names.grader, { docker, prefix });
+        const state: RelayOutcome = { report: null, graderCode: undefined, workerCode: undefined, spawnError: false,
+          timedOut: false, aborted: false, graderBroken: false, workerFault: null, candidateMs: 0, calls: 0 };
+        let workerReady = false;
+        let workerClosed = false;
+        let pending: { id: number; sentAt: number; line: string } | null = null;
+        let budgetTimer: NodeJS.Timeout | undefined;
         let backstop: NodeJS.Timeout | undefined;
-        const kill = () => {
-          void control(['kill', name]);
-          backstop ??= setTimeout(() => child.kill('SIGKILL'), controlTimeoutMs);
+        let finished = false;
+        const send = (child: typeof worker, line: string) => { if (!child.stdin.destroyed) child.stdin.write(`${line}\n`); };
+        const killAll = () => {
+          void control(['kill', names.worker]);
+          void control(['kill', names.grader]);
+          // If the daemon hangs, `docker kill` can't land: kill the CLIs so this always ends.
+          backstop ??= setTimeout(() => { worker.kill('SIGKILL'); grader.kill('SIGKILL'); }, controlTimeoutMs);
         };
-        const timer = setTimeout(() => { timedOut = true; kill(); }, limits.wall_time_ms);
-        const abort = () => { aborted = true; kill(); };
-        context.signal.addEventListener('abort', abort, { once: true });
-        child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-        child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-        const finish = (result: { code: number | null; spawnError?: Error }) => {
-          clearTimeout(timer);
-          clearTimeout(backstop);
-          context.signal.removeEventListener('abort', abort);
-          done(result);
+        const lifetime = setTimeout(() => { state.timedOut = true; killAll(); }, limits.wall_time_ms + startupBudgetMs);
+        const onAbort = () => { state.aborted = true; killAll(); };
+        context.signal.addEventListener('abort', onAbort, { once: true });
+
+        // Only time spent inside candidate code counts against wall_time_ms.
+        const startBudget = () => {
+          clearTimeout(budgetTimer);
+          budgetTimer = setTimeout(() => { state.timedOut = true; killAll(); }, Math.max(0, limits.wall_time_ms - state.candidateMs));
         };
-        child.once('error', error => finish({ code: null, spawnError: error }));
-        child.once('close', code => finish({ code }));
+        const dispatch = () => {
+          if (!pending || !workerReady || pending.sentAt > 0) return;
+          pending.sentAt = Date.now();
+          send(worker, pending.line);
+          startBudget();
+        };
+        const answerGrader = (message: unknown) => send(grader, JSON.stringify(message));
+        // Stop the worker for good: kill the container, close its input, and if its docker
+        // CLI still hasn't exited after the grace period, kill the CLI process too.
+        let workerReaper: NodeJS.Timeout | undefined;
+        const stopWorker = () => {
+          if (workerClosed) return;
+          workerClosed = true;
+          worker.stdin.end();
+          void control(['kill', names.worker]);
+          workerReaper = setTimeout(() => worker.kill('SIGKILL'), controlTimeoutMs);
+        };
+        const workerFails = (fault: 'WorkerDied' | 'ProtocolViolation') => {
+          state.workerFault ??= fault;
+          stopWorker();
+          clearTimeout(budgetTimer);
+          if (pending) { answerGrader({ id: pending.id, ok: false, error: { type: fault, message: 'candidate worker unavailable' } }); pending = null; }
+        };
+
+        // Grader (trusted) -> host: calls to relay, then exactly one report.
+        grader.stdout.on('data', lineReader(MAX_LINE_BYTES, line => {
+          let message: unknown;
+          try { message = JSON.parse(line); } catch { state.graderBroken = true; killAll(); return; }
+          if (!isObject(message)) { state.graderBroken = true; killAll(); return; }
+          if (message.type === 'report') {
+            if (state.report !== null) { state.graderBroken = true; killAll(); return; }
+            state.report = message;
+            return;
+          }
+          if ((message.op !== 'call' && message.op !== 'resolve') || typeof message.id !== 'number' || pending) {
+            state.graderBroken = true; killAll(); return;
+          }
+          state.calls += 1;
+          if (state.calls > MAX_CALLS) { state.graderBroken = true; killAll(); return; }
+          if (state.workerFault) {
+            answerGrader({ id: message.id, ok: false, error: { type: state.workerFault, message: 'candidate worker unavailable' } });
+            return;
+          }
+          pending = { id: message.id, sentAt: 0, line: JSON.stringify(message) };
+          dispatch();
+        }, () => { state.graderBroken = true; killAll(); }));
+        grader.stderr.on('data', (chunk: Buffer) => graderOutput.push(chunk));
+
+        // Worker (untrusted) -> host: one ready line, then replies. Anything else is a violation.
+        worker.stdout.on('data', lineReader(MAX_LINE_BYTES, line => {
+          if (state.workerFault) return;
+          let message: unknown;
+          try { message = JSON.parse(line); } catch { workerFails('ProtocolViolation'); return; }
+          if (!workerReady) {
+            if (isObject(message) && message.id === 0 && message.kind === 'ready') { workerReady = true; dispatch(); return; }
+            workerFails('ProtocolViolation');
+            return;
+          }
+          if (!pending || pending.sentAt === 0 || !validWorkerReply(message, pending.id)) { workerFails('ProtocolViolation'); return; }
+          clearTimeout(budgetTimer);
+          state.candidateMs += Date.now() - pending.sentAt;
+          pending = null;
+          answerGrader(message);
+        }, () => workerFails('ProtocolViolation')));
+        worker.stderr.on('data', (chunk: Buffer) => candidateOutput.push(chunk));
+
+        const finish = () => {
+          if (finished || state.graderCode === undefined || state.workerCode === undefined) return;
+          finished = true;
+          clearTimeout(lifetime); clearTimeout(budgetTimer); clearTimeout(backstop); clearTimeout(workerReaper);
+          context.signal.removeEventListener('abort', onAbort);
+          done(state);
+        };
+        worker.once('error', () => { state.spawnError = true; killAll(); });
+        grader.once('error', () => { state.spawnError = true; killAll(); });
+        worker.once('close', code => {
+          state.workerCode = code;
+          // Exiting while the grader still needs it (os._exit, OOM, crash) is a worker fault.
+          if (!workerClosed) workerFails('WorkerDied');
+          finish();
+        });
+        grader.once('close', code => {
+          state.graderCode = code;
+          // Grader done: release the worker.
+          stopWorker();
+          finish();
+        });
       });
 
-      if (aborted) throw context.signal.reason ?? new Error('Aborted');
+      if (outcome.aborted) throw context.signal.reason ?? new Error('Aborted');
       if (outcome.spawnError) return unavailable(SANDBOX_DOWN);
-      // 125: docker itself failed (daemon, image, mounts). 126/127: the image can't run python.
-      if (!timedOut && (outcome.code === 125 || outcome.code === 126 || outcome.code === 127)) return unavailable(SANDBOX_START_FAILED);
-      // No container id: docker never created the container, whatever its exit code
-      // (newer CLIs exit 1 when the daemon is unreachable). Infrastructure, not the candidate.
-      const created = await readFile(cidfile, 'utf8').then(id => id.trim().length > 0, () => false);
-      if (!created) return unavailable((await daemonHealthy(false)) ? SANDBOX_START_FAILED : SANDBOX_DOWN);
+      const startFailed = (code: number | null | undefined) => code === 125 || code === 126 || code === 127;
+      if (!outcome.timedOut && (startFailed(outcome.graderCode) || startFailed(outcome.workerCode))) return unavailable(SANDBOX_START_FAILED);
+      // No container id: docker never created that container, whatever the exit code.
+      const created = async (file: string) => readFile(file, 'utf8').then(id => id.trim().length > 0, () => false);
+      if (!(await created(cidfiles.grader)) || !(await created(cidfiles.worker))) {
+        return unavailable((await daemonHealthy(false)) ? SANDBOX_START_FAILED : SANDBOX_DOWN);
+      }
 
-      let xml: string | null = null;
-      try {
-        const report = join(out, 'results.xml');
-        if ((await stat(report)).size <= REPORT_MAX_BYTES) xml = await readFile(report, 'utf8');
-      } catch { xml = null; }
+      const report = parseReport(outcome.report, expectedIds);
+      // Anything not cleanly gradable might be infrastructure (daemon died mid-run, grader
+      // killed). Only grade it if the daemon is demonstrably healthy; otherwise no grade.
+      const clean = !outcome.timedOut && !outcome.graderBroken && report !== null && (outcome.graderCode === 0 || outcome.graderCode === 1);
+      if (!clean && !(await daemonHealthy(false))) return unavailable(SANDBOX_DOWN);
+      if (report?.unsupported) return unavailable('Task not supported by the isolated runner: tests must call candidate functions with plain data values');
 
-      // Anything not cleanly gradable could be the daemon dying mid-run rather than the
-      // candidate (os._exit, OOM, loop). Only grade it if the daemon is demonstrably healthy;
-      // an unreachable or undecidable daemon fails closed with no grade.
-      const gradable = !timedOut && xml !== null && (outcome.code === 0 || outcome.code === 1);
-      if (!gradable && !(await daemonHealthy(false))) return unavailable(SANDBOX_DOWN);
+      const graded = new Map<string, { status: TestResult['status']; duration_ms: number }>();
+      for (const id of expectedIds) {
+        const reported = outcome.timedOut ? undefined : report?.tests.get(id);
+        graded.set(id, outcome.timedOut ? { status: 'timeout', duration_ms: 0 } : reported ?? { status: 'error', duration_ms: 0 });
+      }
+      // The grader is trusted, but a pass still needs its own exit code to agree.
+      const allPassed = [...graded.values()].every(result => result.status === 'pass');
+      if (allPassed && outcome.graderCode !== 0) for (const id of expectedIds) graded.set(id, { status: 'error', duration_ms: 0 });
 
-      const graded = grade(expectedIds, xml, outcome.code, timedOut);
       const tests = expectedIds.map(id => ({ id, ...graded.get(id)!, visibility: visibility.get(id)! }));
       return { kind: 'ok', value: {
-        run_id: randomUUID(), task_id: input.task_id, mode: input.mode, tests,
+        run_id: runId, task_id: input.task_id, mode: input.mode, tests,
         passed: tests.filter(test => test.status === 'pass').length, total: tests.length,
-        stdout: stdout.text(), stderr: scrubDockerText(stderr.text()), timed_out: timedOut,
+        stdout: scrubDockerText(graderOutput.text()), stderr: scrubDockerText(candidateOutput.text()), timed_out: outcome.timedOut,
       } };
     } finally {
-      // --rm removes a container that exited; this covers kill, abort and crashes.
-      if (started) await control(['rm', '-f', name]);
-      active.delete(name);
+      // --rm removes exited containers; this covers kill, abort and crashes.
+      if (started) await Promise.all([control(['rm', '-f', names.worker]), control(['rm', '-f', names.grader])]);
+      active.delete(names.worker);
+      active.delete(names.grader);
       await rm(root, { recursive: true, force: true });
     }
   };
+}
+
+type RelayOutcome = {
+  report: Record<string, unknown> | null;
+  graderCode: number | null | undefined;
+  workerCode: number | null | undefined;
+  spawnError: boolean;
+  timedOut: boolean;
+  aborted: boolean;
+  graderBroken: boolean;
+  workerFault: 'WorkerDied' | 'ProtocolViolation' | null;
+  candidateMs: number;
+  calls: number;
+};
+
+/** The grader's report: per-test status for expected ids only; anything malformed is null. */
+function parseReport(report: Record<string, unknown> | null, expectedIds: string[]) {
+  if (!report || !Array.isArray(report.tests)) return null;
+  const expected = new Set(expectedIds);
+  const tests = new Map<string, { status: TestResult['status']; duration_ms: number }>();
+  let unsupported = false;
+  for (const entry of report.tests) {
+    if (!isObject(entry) || typeof entry.id !== 'string' || typeof entry.status !== 'string') return null;
+    const duration = typeof entry.duration_ms === 'number' && Number.isFinite(entry.duration_ms) && entry.duration_ms >= 0 ? entry.duration_ms : 0;
+    if (entry.status === 'unsupported') { unsupported = true; continue; }
+    if (!expected.has(entry.id)) continue;
+    const status = entry.status === 'pass' || entry.status === 'fail' ? entry.status : 'error';
+    if (tests.has(entry.id)) return null; // duplicates are never trusted
+    tests.set(entry.id, { status, duration_ms: Math.round(duration) });
+  }
+  return { tests, unsupported };
 }
 
 /** Default instance for wiring: `ports.runTests = runTestsInDocker` when RUNNER=docker. */
