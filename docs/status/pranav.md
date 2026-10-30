@@ -115,3 +115,12 @@ Newest entries at the bottom. Written by `/ship`.
   No separate "unlocked sets" contract field is needed; the outcome text carries it. Ask me if the frontend wants a number.
 - Checks: tests written first (8 failed before the change, all pass after). pnpm typecheck passed; pnpm test 250 passed / 46 skipped (Docker + PostgreSQL not available here) + 9 Python passed; ownership check below.
 - Next: wire claims once the contract lands.
+## 2026-10-31 04:05 — P12 — submission readiness
+- Changed: README.md, docs/demo/PITCH_FACTS.md, docs/demo/DEMO_SCRIPT.md, scripts/pre-submit-check.sh (new). Docs + script only.
+- README: Demo video / Live URL / "How to run the demo" → deploy/README.md placeholders at the top. "What's real today" checked at 462c530: R3 split grading, K7 seeds (task files, not yet served), R5-live, unlock rule (decided; API flow pending K10). K10, R6 and frontend are not merged, so they stay "in progress". The sandbox and limitations text now reflects R3. No 15/20/25 wording remains.
+- PITCH_FACTS: re-measured on 462c530 (typecheck clean; 242 passed / 46 skipped + 9 Python). Added R3 (8f567a6) and R5-live (9fff6a3) numbers exactly as in docs/status/rithvik.md: 8 of 12 answered replies leaked before the fixes → 0 leaks in 22 scenarios after; about $0.0018 total; median about 2.1 s per answered call. Caveats included.
+- DEMO_SCRIPT: re-checked against 462c530. The second-set step uses the merged Adept seed (needs K10 to serve it). The jailbreak line is now the tested fixture jb-01-direct. Caveat added: R5-live wasn't measured on the Adept seed itself. The report step notes P11 (PR #36). The dependency table is updated.
+- scripts/pre-submit-check.sh: typecheck, test, attack suite (needs a backend on 127.0.0.1:3001), secret scan (tracked .env files, non-empty .env.example secrets, sk-/Bearer/rc_ keys). Prints ✅/❌ and exits 1 on any failure. Run on 462c530 with a local backend up: all 8 checks ✅ (attack suite 39 pass / 0 fail).
+- **Fix found while doing P12:** my P11 PR #36 had been pushed with only the status file. A `git stash pop` during /ship had unstaged the code. Pushed the missing code + tests as a0f1f21; PR #36 now has all 5 files and passes typecheck and tests (250 passed / 46 skipped). P6–P8 were checked and are complete on main.
+- Seams/contracts affected: none
+- Next: P13 once Karthik's K8 adds Report.claims.
