@@ -51,13 +51,13 @@ Every decision in this file carries one of these labels. Respect them.
 
 | Member | Primary role |
 |---|---|
-| **Pranav** | Team lead, frontend (with Akshit), repo owner, reviews and merges PRs, architecture and integration decisions |
+| **Pranav** | Team lead, frontend (with Akshit), repo owner, final PR merges; small backend modules (portfolio intake, quiz, AI efficiency score, report builder) |
 | **Akshit** | Frontend: UI, user flows, responsive design, frontend integration, end-to-end journey testing |
-| **Rithvik** | Backend: APIs, business logic, validation, data handling; supports AI integration |
-| **Karthik** | Backend: APIs, data flow, application logic, reliability; supports AI integration |
-| **Aryan** | AI/LLM (Featherless) with the backend team, small cross-functional tasks, PPT and pitch |
+| **Rithvik** | Backend: sandbox runner and grading, Featherless integration and guarded assistant, deployment |
+| **Karthik** | **Backend lead:** API, database, auth, sessions and tiers, task generation, validation engine, seed bank, backend integration |
+| **Aryan** | PPT and pitch; small cross-functional tasks (for example seed-bank tasks under Karthik) |
 
-Ownership of each module below is **[OPEN — Pranav assigns]**. Roles are primary responsibilities, not silos.
+Backend module ownership, task order and milestones are in **`docs/TorqueCode_Backend_Plan.md`**. Roles are primary responsibilities, not silos.
 
 **Git workflow [LOCKED]:** one shared repo owned by Pranav, `main` always deployable, one feature branch per task, small PRs, Pranav reviews and merges, no secrets committed, README with problem, solution, architecture, setup, and demo link.
 
@@ -121,7 +121,7 @@ Ownership of each module below is **[OPEN — Pranav assigns]**. Roles are prima
 | **Hidden tests** | Tests run only on Submit. Server-only. |
 | **FAIL_TO_PASS (F2P)** | Tests that must fail on the starter code and pass on the reference. They prove the task is real. (Term mentioned by the team; same idea as SWE-bench.) |
 | **PASS_TO_PASS (P2P)** | Tests that pass on both starter and reference. They prove the candidate didn't break existing behavior. |
-| **Validation engine** | Deterministic Python code that checks every generated task before release. |
+| **Validation engine** | Deterministic code that checks every generated task before release. |
 | **Seed bank** | A small set of hand-verified tasks used as a fallback when generation fails. |
 | **Hint ladder** | Pre-generated, pre-checked hints for a task, served one level at a time. |
 | **Guarded assistant** | The Featherless-powered chat beside the editor in Adept and Master tiers. |
@@ -281,7 +281,7 @@ The recordings mentioned MCQs, debugging, direct coding, LeetCode-type DSA, syst
 |---|---|
 | Code editor | **Monaco Editor** (the open-source editor behind VS Code), found by the team. **[RECOMMENDED — team leaning]** |
 | Execution engine | **[OPEN]** Two options were discussed: (a) self-hosted **Judge0** (open-source execution backend; supports multi-file programs), or (b) our own Docker-based runner. See §15, Q5. |
-| Backend language/framework | **[OPEN]** The team said the validation engine is Python. **[RECOMMENDED]** Python + FastAPI for the whole backend so the runner, validation, and grading share code. |
+| Backend language/framework | **[OPEN]** Decided by the backend team in task K0 and recorded in `docs/BACKEND_DECISIONS.md`. Proposal in `docs/TorqueCode_Backend_Plan.md` §0.1: TypeScript backend, Python only for code-analysis tools, seed tasks and the runner image. |
 | Frontend framework | **[OPEN]** |
 | Database | **[OPEN]** |
 | Auth method | **[OPEN]** |
@@ -357,9 +357,9 @@ The recordings mentioned MCQs, debugging, direct coding, LeetCode-type DSA, syst
 - Generation runs as an **async job** with progress shown in the UI. Pre-generate an assessment before the demo.
 - The seed bank may be sourced from public GitHub interview-question repositories, as the team suggested. **Check each repo's license** before using its content.
 
-**B3. Validation engine — deterministic Python [PS + LOCKED]**
+**B3. Validation engine — deterministic code [PS + LOCKED]**
 
-The team agreed: the validation engine is static Python code; Featherless generates, Python decides.
+The team agreed: the validation engine is static, deterministic code. Featherless generates; the code decides. (The team first said Python; the final language is set in K0.)
 
 | Gate | Check |
 |---|---|
@@ -375,7 +375,7 @@ The team agreed: the validation engine is static Python code; Featherless genera
 
 Every passed gate is stored as a **validation receipt** and can be shown in the UI.
 
-**Where Featherless fits in validation [PS]:** the PS asks Featherless to "run automated validation checks." Featherless drives the loop: it reads a failed gate's message and repairs or regenerates the task, and it can do extra consistency reviews (for example, does the statement describe what the tests check?). It never decides pass or fail. The Python gates above are the only judge.
+**Where Featherless fits in validation [PS]:** the PS asks Featherless to "run automated validation checks." Featherless drives the loop: it reads a failed gate's message and repairs or regenerates the task, and it can do extra consistency reviews (for example, does the statement describe what the tests check?). It never decides pass or fail. The deterministic gates above are the only judge.
 
 **B4. Guarded assistant (Adept/Master only)**
 1. **Context:** the task statement, the candidate's current code, and visible test failures. **Never** the reference solution, hidden tests, or expected outputs.
@@ -550,7 +550,7 @@ Frontend responsibilities:
 | Q3 | If a candidate fails Adept, do they drop back, or stay? If they decline an upgrade, what do they do with the leftover time? | No demotion; they keep working; leftover time is simply unused or spent on the current tier. |
 | Q4 | How does the 20% AIE score apply to Novice tasks? | AIE computed over Adept/Master only; Novice scored on correctness alone. |
 | Q5 | Execution engine: self-hosted Judge0 or our own Docker runner? | Own Docker runner on one machine, since Judge0 is one more service to install and configure on the host. Decide in hour one. |
-| Q6 | Backend language and frontend framework? | Python + FastAPI backend; frontend in whatever Pranav and Akshit are fastest in. |
+| Q6 | Backend language and frontend framework? | Backend: decided by the backend team in K0 (proposal: TypeScript, Python where needed — backend plan §0.1). Frontend: whatever Pranav and Akshit are fastest in. |
 | Q7 | Supported languages in the MVP? | Python only first, then JavaScript/Node. |
 | Q8 | Database and auth method? | Simplest option the team knows; auth can be email + password or a single provider. |
 | Q9 | Which Featherless models? | Benchmark 2–3 ≤34B models for latency and output reliability, then freeze. |

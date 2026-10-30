@@ -1,0 +1,75 @@
+{
+  "_comment": "Who may change which files. Branch prefix = owner. Patterns use fnmatch: * also matches '/'. 'shared' paths are allowed for everyone (dependency files: only ADD lines). Karthik may rename areas in K0 and must update this file in the same PR. Changes need Karthik's or Pranav's approval.",
+  "shared": [
+    "src/backend/tests/*",
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "src/backend/package.json",
+    "src/backend/package-lock.json",
+    "src/backend/pnpm-lock.yaml",
+    "src/backend/yarn.lock",
+    "src/backend/requirements*.txt",
+    "src/frontend/package.json",
+    "src/frontend/package-lock.json",
+    "src/frontend/pnpm-lock.yaml",
+    "src/frontend/yarn.lock"
+  ],
+  "karthik": [
+    "src/backend/api/*",
+    "src/backend/contracts/*",
+    "src/backend/generation/*",
+    "src/backend/tools/*",
+    "src/backend/seed_bank/*",
+    "src/backend/runner/local/*",
+    "src/backend/tsconfig*.json",
+    "src/backend/pyproject.toml",
+    "src/backend/README.md",
+    "src/backend/.eslintrc*",
+    "src/backend/eslint.config.*",
+    "src/backend/vitest.config.*",
+    "src/backend/jest.config.*",
+    "src/backend/prisma/*",
+    "pnpm-workspace.yaml",
+    "tsconfig*.json",
+    "docs/BACKEND_DECISIONS.md",
+    "docs/status/karthik.md",
+    "CLAUDE.md",
+    ".claude/*",
+    ".githooks/*",
+    "scripts/*",
+    ".gitignore",
+    ".env.example"
+  ],
+  "rithvik": [
+    "src/backend/runner/*",
+    "src/backend/llm/*",
+    "deploy/*",
+    "docker-compose*.yml",
+    "docs/status/rithvik.md"
+  ],
+  "pranav": [
+    "src/backend/intake/*",
+    "src/backend/scoring/*",
+    "src/frontend/*",
+    "docs/*",
+    "README.md",
+    "LICENSE",
+    "CLAUDE.md",
+    ".claude/*",
+    ".githooks/*",
+    "scripts/*",
+    ".gitignore",
+    ".env.example"
+  ],
+  "akshit": [
+    "src/frontend/*",
+    "docs/status/akshit.md"
+  ],
+  "aryan": [
+    "src/backend/seed_bank/*",
+    "docs/pitch/*",
+    "docs/status/aryan.md"
+  ]
+}
