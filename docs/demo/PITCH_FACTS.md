@@ -34,7 +34,8 @@ Hostile cases Rithvik ran (`37e14cd`, `773e8a8`):
 - An infinite loop was killed at 5 s.
 - A fork bomb was contained by the 32-process limit.
 - About 20 MB of output was captured as exactly **65,536 bytes**.
-- `sys.exit(0)`, `os._exit(0)`, a forged report or deleted tests still graded **0 passed**.
+- The tampering cases Rithvik tested (`sys.exit(0)`, `os._exit(0)`, a naive forged report, deleted tests) were graded **0 passed**.
+- **Not yet closed:** Rithvik documents that candidate code still shares the pytest interpreter, so a deliberate, consistent forged report can still pass. R3 is fixing this. Until R3 is merged, don't say "tamper-proof"; say "tampering we tested is caught; full isolation of grading is in progress".
 - Network, DNS and write probes were all blocked.
 
 If Docker is down, the API returns **503 SANDBOX_UNAVAILABLE** and records no grade, instead of a fake 0 (finding 7, fixed and verified in `4fbaeee`).

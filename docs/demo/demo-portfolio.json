@@ -25,5 +25,5 @@
   ],
   "tech_stack": ["python", "sql"],
   "skills": ["rest-apis", "caching", "sql"],
-  "dsa_topics_solved": ["arrays", "hashing", "two_pointers", "sorting"]
+  "dsa_topics_solved": ["arrays", "hashing", "two_pointers", "sliding window", "sorting"]
 }

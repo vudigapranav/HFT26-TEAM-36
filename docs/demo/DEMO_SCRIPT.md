@@ -27,7 +27,7 @@ Checked against `main` @ `7313627`. Files: `docs/demo/demo-portfolio.json` (main
 ## 0:35–1:05 · Upload portfolio · ✅ on main · FE
 
 1. **Upload** → drop `demo-portfolio.json`.
-2. Point at the parsed summary: **domain: backend (confidence 0.94)**, **claimed topics: arrays, hashing, two_pointers, sorting**, **warnings: none**.
+2. Point at the parsed summary: **domain: backend (confidence 0.94)**, **claimed topics: arrays, hashing, two_pointers, sliding_window, sorting** (the portfolio writes "sliding window"; the normalizer turns it into `sliding_window`, worth pointing at), **warnings: none**.
 3. Say: "Topics are normalized to a fixed list; every task may only use these."
 4. *(Optional, 10 s)* Drop `demo-portfolio-injection.json` instead: the warning reads *"Possible prompt-injection text in projects[0].description, projects[0].highlights[1]; treated as plain text."* Then re-upload `demo-portfolio.json`.
 
