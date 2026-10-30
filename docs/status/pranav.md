@@ -84,3 +84,8 @@ Newest entries at the bottom. Written by `/ship`.
   **Akshit** — once that ships, the report page can show a "Claims vs demonstrated" table from report.claims (null = not tested this session).
 - Checks: pnpm typecheck passed; pnpm test 218 passed / 28 skipped (PostgreSQL + Docker) + 9 Python passed; ownership check passed.
 - Next: P9 README
+## 2026-10-31 03:00 — P9 — submission README
+- Changed: README.md (replaces the starter template: problem, solution, how it works, architecture from context §9, real-vs-next table, setup, security/integrity design, honest limitations, team PAARK roles, demo link placeholder). Docs only.
+- Seams/contracts affected: none
+- Teammates should know: the "What's real today" table lists only what's merged on main @ 6793cee. When K10/K7/K5/K6/R3/R6/frontend merge, update that table and the "In progress" line. deploy/README.md is linked but doesn't exist yet. Rithvik, please create it in R6. Demo/live URLs are placeholders. No test counts or performance numbers are claimed.
+- Next: merge P6–P9 PRs; review K10.
