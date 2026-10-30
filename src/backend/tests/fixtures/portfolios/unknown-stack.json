@@ -1,0 +1,22 @@
+{
+  "candidate": { "name": "Sanjana Ravuri", "email": "sanjana.ravuri@example.com" },
+  "projects": [
+    {
+      "name": "LedgerBatch",
+      "description": "Maintenance work on a nightly batch job that reconciles branch ledgers for a fictional regional cooperative bank.",
+      "tech_stack": ["cobol", "jcl", "db2"],
+      "role": "Maintenance programmer",
+      "highlights": ["Rewrote a slow record-matching step to cut nightly runtime"]
+    },
+    {
+      "name": "HeatGrid",
+      "description": "A finite-difference heat-diffusion simulation on a 2D plate, written for a numerical methods course.",
+      "tech_stack": ["fortran", "gnuplot"],
+      "role": "Student project",
+      "highlights": ["Implemented an explicit time-stepping scheme with stability checks"]
+    }
+  ],
+  "tech_stack": ["cobol", "fortran"],
+  "skills": ["batch-processing", "numerical-methods"],
+  "dsa_topics_solved": ["arrays", "sorting"]
+}
