@@ -60,7 +60,7 @@ Frontend -> public contracts -> Fastify app -> injected Ports
 | `intake/`, `scoring/` | Pranav; no implementation changes by Karthik |
 | `src/backend/tests/` | Shared; each person tests their area and shared contracts |
 
-The ownership map is reused from Pranav's pending kit, with one explicit addition: Karthik owns `src/backend/uv.lock`. Runtime configuration remains in package/project files, not extra unowned root files. Root manifests and workspace configuration are setup/shared integration files.
+The ownership map is reused from Pranav's merged setup kit, with one explicit addition: Karthik owns `src/backend/uv.lock`. Runtime configuration remains in package/project files, not extra unowned root files. Root manifests and workspace configuration are setup/shared integration files.
 
 ## Local stand-in safety and limits
 
