@@ -321,3 +321,18 @@ Base: origin/main `e850eaa` (R3 PR 29 merged). Branch `rithvik/r5-live`.
   - The model complied in run 2, so the output guard wasn't exercised live; its coverage comes from replaying run-1 replies in tests.
   - Small sample: 22 scenarios on one task and one model. Other tasks or models need their own runs.
 - Teammates: no API or contract change. K10 should call `createAssistant` exactly as before; these are internal changes to the guards and policy.
+
+## 2026-10-31 03:28 — R7 — K7 seeds on the real R3 runner (Docker)
+Base: origin/main `462c530`. Branch `rithvik/k7-docker-check`; tests and status only, no seed files edited.
+- Added `src/backend/tests/runner/seed-bank-docker.test.ts` (real Docker, skips without the image). For **every** directory in `seed_bank/`: the reference is submitted 3 times and every test must pass; the starter must fail exactly `task.json` `f2p_ids` and pass exactly `p2p_ids`. New seeds are picked up automatically.
+- Result on this laptop (Windows 11, Docker 29.8.0, 24 CPUs): **4 passed, 0 failed**. This matches Pranav's expectations exactly:
+
+  | seed | reference (3 runs) | starter | 3 reference runs + 1 starter |
+  |---|---|---|---|
+  | `novice_request_summary` | 5/5 each | 2 fail / 3 pass (= f2p / p2p) | 7.8 s |
+  | `adept_event_dedupe` | 10/10 each | 7 fail / 3 pass | 9.0 s |
+  | `master_session_window` | 10/10 each | 5 fail / 5 pass | 13.1 s |
+
+- Single-run timings (earlier run, same machine): novice reference ~1.75 s, adept ~2.0–2.3 s, master ~2.5 s. **Master starter 5.1 s**, slower than Pranav's ~2 s estimate: its starter is deliberately slow on the 30,000-record performance test. That's still well under its 10 s `wall_time_ms`, which counts candidate time only.
+- The Master performance test (30,000 codes, 0.3 s limit) passes through the R3 relay with the reference. Its timing is measured inside the trusted grader, so it includes relay overhead; the margin was enough here.
+- K5/K6 note: run this test on any new or generated seed. A task that breaks the plain-data format shows up as `unavailable: Task not supported`, not as a grade.
