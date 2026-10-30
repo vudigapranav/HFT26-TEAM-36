@@ -83,28 +83,29 @@ Portfolio JSON ──► Onboarding quiz ──► 60-minute assessment ──�
 
 ## ✅ What's real today vs. what's next
 
-Merged into `main` and covered by tests (checked at `main` @ `462c530`):
+Merged into `main` and covered by tests (checked at `main` @ `19df7ff`):
 
 | Area | Status |
 | :--- | :--- |
 | Email + password login (Argon2id, hashed opaque session tokens, origin checks, rate limits) | ✅ merged |
 | Portfolio intake: validation, topic normalization, domain detection, injection flags | ✅ merged |
 | Onboarding quiz with claimed-skills-only focus lane | ✅ merged |
-| Assessment API: create session, server-side timer, autosave, Run, Submit, hint ladder, integrity events, auto-submit at expiry | ✅ merged (one Novice seed task) |
-| Docker sandbox runner wired into the API (`RUNNER=docker`) | ✅ merged |
-| Anti-tamper grading: split containers, candidate code never sees the tests or the report (R3) | ✅ merged |
-| Adept + Master seed tasks (multi-file feature; debugging with a performance limit) | ✅ merged as task files; not yet served by the API |
-| AI efficiency score (context §12 rules) and report builder | ✅ merged |
-| Featherless client (single queue, retries) and guarded assistant + hint provider, measured against the live model (R5-live) | ✅ merged as modules; not yet wired into the API |
-| Question-set unlock rule (one 60-minute timer; attempt every question → "Unlock next questions", max 2; levels never named in the UI) | ✅ decided and documented; API flow in progress |
+| Question sets in one 60-minute session: everyone starts on the first set; after submitting every question (right or wrong) the candidate may click "Unlock next questions", at most twice; levels are never named in the assessment API; earlier questions stay open (K10, PR #42) | ✅ merged |
+| Assessment API: server-side timer, autosave, Run, Submit, integrity events, auto-submit at expiry, neutral question IDs, locked sets refused (403) | ✅ merged |
+| Hints and the guarded assistant endpoint, only on later question sets (K10, PR #42; R5 guards, measured against the live model in R5-live) | ✅ merged; the assistant needs a Featherless key, otherwise it returns 503 |
+| Three seed question sets: Novice bug fix, Adept multi-file feature, Master debugging with a performance limit (K7), each checked on the real Docker runner (R7) | ✅ merged |
+| Docker sandbox runner with anti-tamper split-container grading (R2, R3) | ✅ merged |
+| Deterministic task validation engine: schema, topic bound (Python AST), import allow-list, runner format, leakage, reference passes 3×, starter F2P/P2P, Master performance (K5, PR #44) | ✅ merged; wired as the `validateTask` seam, used once generation lands |
+| AI efficiency score (context §12) and report builder that only counts unlocked question sets | ✅ merged |
+| One-command local deployment: PostgreSQL 16 in Compose, backend on the host, verify script (R6) | ✅ merged; verified on Windows, not yet on the demo Mac |
 
-In progress during the hackathon: the question-set unlock flow and assistant endpoint in the API (K10), the validation engine, live task generation, demo-machine deployment (R6) and the frontend.
+In progress during the hackathon: persistent assessments across restarts (K11), live task generation (K6), cloud deployment (R6b) and the frontend.
 
 **Future scope (pitch only, not built):** project-based assessments built around the candidate's own repositories, and camera-based proctoring.
 
 ## 🚀 Setup
 
-**How to run the demo:** see [`deploy/README.md`](deploy/README.md) (added with deployment task R6; until it lands, use the commands below).
+**How to run the demo:** `deploy/start.sh`, then `deploy/verify.sh`. Details in [`deploy/README.md`](deploy/README.md). The commands below are for local development.
 
 Local development, from the repository root (Node 24.22.1+, pnpm 11, uv, Python 3.13; PostgreSQL 16 and Docker for the full flow):
 
