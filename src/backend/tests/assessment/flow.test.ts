@@ -285,3 +285,37 @@ it('merges only client editable files and preserves task-owned immutable files',
 it('the real bounded startup probe reports a missing image/runtime as unavailable', async () => {
   expect(await inspectDockerImage('torquecode-k9-nonexistent-image:missing-startup-probe')).toBe(false);
 });
+
+it('K10 reports unavailable tiers without inventing tasks', async () => {
+  const { call, seed } = await setup();
+
+  await call('POST', '/portfolio', portfolio);
+
+  const created = await call('POST', '/assessments', {});
+  expect(created.statusCode).toBe(201);
+
+  const id = created.json().assessment_id;
+  const status = await call('GET', `/assessments/${id}/status`);
+
+  expect(status.statusCode).toBe(200);
+  expect(status.json().unlocked_tiers).toEqual(['novice']);
+
+  expect(status.json().tiers).toEqual([
+    {
+      tier: 'novice',
+      availability: 'available',
+      unlocked: true,
+      task_id: seed.task_id,
+    },
+    {
+      tier: 'adept',
+      availability: 'unavailable',
+      unlocked: false,
+    },
+    {
+      tier: 'master',
+      availability: 'unavailable',
+      unlocked: false,
+    },
+  ]);
+});

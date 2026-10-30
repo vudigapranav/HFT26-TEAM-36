@@ -123,7 +123,20 @@ export const FocusLane = object({ domain: Domain, skills: Type.Array(text(100), 
 export const QuizResponse = object({ questions: Type.Array(QuizQuestion, { maxItems: 10 }) });
 export const QuizAnswers = object({ answers: Type.Array(object({ question_id: Id, option_id: Id }), { maxItems: 10 }) });
 export const FocusLaneResponse = object({ focus_lane: FocusLane });
+export const TierAvailability = object({
+  tier: Tier,
+  availability: Type.Enum(['available', 'unavailable']),
+  unlocked: Type.Boolean(),
+  task_id: Type.Optional(Id),
+});
+
 export const AssessmentState = object({
+  unlocked_tiers: Type.Array(Tier, {
+    minItems: 1, maxItems: 3, uniqueItems: true,
+  }),
+  tiers: Type.Array(TierAvailability, {
+    minItems: 3, maxItems: 3,
+  }),
   assessment_id: Id, report_id: Id, task_id: Id, current_tier: Tier,
   status: Type.Enum(['active', 'finished']), started_at: Type.String({ format: 'date-time' }),
   expires_at: Type.String({ format: 'date-time' }), remaining_sec: Type.Integer({ minimum: 0, maximum: 3600 }),

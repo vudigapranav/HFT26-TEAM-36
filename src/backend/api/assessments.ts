@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { TIER_ORDER } from './tier-policy.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Type } from 'typebox';
 import { ApiError, AssessmentState, EventsRequest, FocusLaneResponse, HintResponse, PortfolioResponse, QuizAnswers, QuizResponse, Report, RunFilesRequest, RunResult, Task, TaskFilesRequest } from '@torquecode/contracts';
@@ -117,6 +118,17 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   const state = (record: AssessmentRecord) => ({
     assessment_id: record.session.id, report_id: `report-${record.session.id}`, task_id: seed.task_id,
     current_tier: record.session.current_tier, status: record.session.status,
+    unlocked_tiers: record.unlocked_tiers ?? ['novice'],
+    tiers: TIER_ORDER.map(tier => {
+      const work = record.tier_work?.[tier];
+      const unlocked = (record.unlocked_tiers ?? ['novice']).includes(tier);
+      return {
+        tier,
+        availability: work ? 'available' as const : 'unavailable' as const,
+        unlocked,
+        ...(work && unlocked ? { task_id: work.task.task_id } : {}),
+      };
+    }),
     started_at: record.session.started_at, expires_at: record.session.expires_at,
     remaining_sec: Math.max(0, Math.min(3600, Math.ceil((Date.parse(record.session.expires_at) - now()) / 1000))),
     policy_todos: ['OPEN-Q1', 'OPEN-Q4'], runner: options.runner_status?.runner ?? options.runner ?? 'immutable_seed_only',
@@ -160,7 +172,16 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     }
     if (store.assessments.size >= store.max_assessments) throw new HttpProblem(429, 'STORE_CAPACITY');
     const started = now();
-    const record: AssessmentRecord = { session: { id: randomUUID(), user_id: user(request), started_at: new Date(started).toISOString(), expires_at: new Date(started + 3600000).toISOString(), current_tier: 'novice', status: 'active' }, task: structuredClone(seed), files: structuredClone(seed.files), events: [], runs: [], hint_level: 0 };
+    const record: AssessmentRecord = { session: { id: randomUUID(), user_id: user(request), started_at: new Date(started).toISOString(), expires_at: new Date(started + 3600000).toISOString(), current_tier: 'novice', status: 'active' }, task: structuredClone(seed), files: structuredClone(seed.files), events: [], runs: [], hint_level: 0,
+      tier_work: {
+        novice: {
+          task: structuredClone(seed),
+          files: structuredClone(seed.files),
+          hint_level: 0,
+        },
+      },
+      unlocked_tiers: ['novice'],
+    };
     // TODO(OPEN-Q1): no guessed unlock/upgrade policy; seed Novice only.
     store.assessments.set(record.session.id, record);
     return reply.code(201).send(state(record));
