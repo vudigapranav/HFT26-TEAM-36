@@ -92,6 +92,7 @@ export const AieScore = object({
   test_discipline: Type.Number({ minimum: 0, maximum: 1 }), gate: Type.Number({ minimum: 0, maximum: 1 }),
 });
 export const Report = object({
+  claims: Type.Optional(Type.Array(object({ topic: Topic, tested_by: Type.Union([Id, Type.Null()]), demonstrated: Type.Union([Type.Boolean(), Type.Null()]) }), { maxItems: 19 })),
   report_id: Id, session_id: Id,
   tasks: Type.Array(object({ task_id: Id, passed: Type.Integer({ minimum: 0 }), total: Type.Integer({ minimum: 0 }),
     time_sec: Type.Number({ minimum: 0 }), hints_used: Type.Integer({ minimum: 0 }), aie: Type.Union([AieScore, Type.Null()]),

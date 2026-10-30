@@ -167,3 +167,28 @@ describe('buildReport — K10 unlock event payload', () => {
     expect(highestTierRank({ current_tier: 'adept' }, [ev('tier_unlocked', { tier: 'master' })])).toBe(2);
   });
 });
+
+describe('buildReport — claims integration (P13)', () => {
+  const profile = { domain: 'backend' as const, domain_confidence: 1,
+    claimed_topics: ['arrays', 'hashing', 'graphs'] as const, tech_stack: ['python'], skills: [] };
+  const claimProfile = { ...profile, claimed_topics: [...profile.claimed_topics] };
+  it('returns contract-valid demonstrated, failed, and untested claims from final submissions', () => {
+    const events = [submit('nov', 100, 5), submit('ade', 200, 2)];
+    const report = buildReportValue({ session, profile: claimProfile, tasks: [novice, adept], runs, events });
+    expect(Value.Check(Report, report)).toBe(true);
+    expect(report.claims).toEqual([
+      { topic: 'arrays', tested_by: 'nov', demonstrated: true },
+      { topic: 'hashing', tested_by: 'ade', demonstrated: false },
+      { topic: 'graphs', tested_by: null, demonstrated: null },
+    ]);
+  });
+  it('does not claim an offered or locked task was tested without an attempt', () => {
+    const report = buildReportValue({ session: { ...session, current_tier: 'novice' },
+      profile: claimProfile, tasks: [novice, adept], runs, events: [] });
+    expect(report.claims).toEqual(claimProfile.claimed_topics.map(topic => ({ topic, tested_by: null, demonstrated: null })));
+    expect(Value.Check(Report, report)).toBe(true);
+  });
+  it('remains backwards-compatible when callers have no profile', () => {
+    expect(buildReportValue({ session, tasks: [novice], runs: [], events: [] })).not.toHaveProperty('claims');
+  });
+});

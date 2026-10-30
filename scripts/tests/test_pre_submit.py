@@ -13,7 +13,7 @@ class PreSubmitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             bin_dir = Path(directory)
             commands = {
-                "pnpm": '#!/bin/sh\nif [ "$1" = test ]; then printf "  %s\\n" "$TEST_SUMMARY"; fi\n',
+                "pnpm": '#!/bin/sh\nif [ "$1" = test:auth ]; then [ "$TORQUECODE_REQUIRE_DB" = 1 ] && [ "$TORQUECODE_ALL_DB_TESTS" = 1 ] && [ "$RUNNER" = docker ] || exit 9; printf "  %s\\n" "$TEST_SUMMARY"; fi\n',
                 "curl": "#!/bin/sh\nexit 0\n",
                 "python3": '#!/bin/sh\nprintf "%s\\n" "$ATTACK_SUMMARY"\nexit "$ATTACK_STATUS"\n',
             }

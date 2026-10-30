@@ -99,6 +99,8 @@ Merged into `main` and covered by tests (checked at `main` @ `19df7ff`):
 | AI efficiency score (context §12) and report builder that only counts unlocked question sets | ✅ merged |
 | One-command local deployment: PostgreSQL 16 in Compose, backend on the host, verify script (R6) | ✅ merged; verified on Windows, not yet on the demo Mac |
 
+**Claims vs demonstrated (P13):** reports include the assessment's claimed topics, the task that tested each one, and whether its final submission demonstrated that topic. Unattempted claims are explicitly marked untested. Claims are captured when the assessment starts, so re-uploading a portfolio does not rewrite earlier results.
+
 In progress during the hackathon: persistent assessments across restarts (K11), live task generation (K6), cloud deployment (R6b) and the frontend.
 
 **Future scope (pitch only, not built):** project-based assessments built around the candidate's own repositories, and camera-based proctoring.

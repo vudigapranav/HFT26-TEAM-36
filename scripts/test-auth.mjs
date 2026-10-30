@@ -34,7 +34,7 @@ try {
   delete env.DATABASE_URL;
   delete env.TORQUECODE_ISOLATED_TEST_DB;
   if (databaseUrl) Object.assign(env, { DATABASE_URL: databaseUrl, TORQUECODE_ISOLATED_TEST_DB: '1' });
-  child = spawn('pnpm', ['--filter', '@torquecode/backend', 'exec', 'vitest', 'run', 'tests/auth/auth.integration.test.ts'], { cwd: root, stdio: 'inherit', env });
+  child = spawn('pnpm', ['--filter', '@torquecode/backend', 'exec', 'vitest', 'run', ...(process.env.TORQUECODE_ALL_DB_TESTS === '1' ? [] : ['tests/auth/auth.integration.test.ts'])], { cwd: root, stdio: 'inherit', env });
   process.exitCode = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', code => resolve(code ?? 1)); });
 } catch (error) {
   console.error(error instanceof Error ? error.message : 'Isolated PostgreSQL test failed');
