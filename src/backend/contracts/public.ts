@@ -140,7 +140,16 @@ export const TierAvailability = object({
   task_id: Type.Optional(Id),
 });
 
+export const ReportHistory = object({ reports: Type.Array(object({
+  id: Id, created_at: Type.String({ format: 'date-time' }), final_score: Type.Number({minimum:0,maximum:100}), outcome: text(300),
+}), {maxItems:100}), next_cursor: Type.Optional(Id) });
 export const AssessmentState = object({
+  generation: Type.Optional(object({
+    status: Type.Enum(['queued','generating','validating','ready','failed']),
+    progress: object({ status: Type.Optional(Type.Enum(['generating','validating'])) }),
+    receipts: Type.Array(object({ gate: text(80), status: Type.Enum(['pass','fail','skipped']), reason: text(300) }), {maxItems:30}),
+    source: Type.Optional(Type.Enum(['generated','seed_bank'])),
+  })),
   assessment_id: Id,
   report_id: Id,
   task_id: Id,

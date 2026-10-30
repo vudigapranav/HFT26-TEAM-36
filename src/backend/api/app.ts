@@ -8,9 +8,9 @@ import { registerAuth, type AuthOptions } from './auth.js';
 import type { RunnerStatus } from './runner-status.js';
 import { registerErrors } from './errors.js';
 
-export async function buildApp(dependencies: { ports: Ports; auth?: AuthOptions; assessment?: AssessmentOptions; runner?: RunnerStatus }) {
+export async function buildApp(dependencies: { ports: Ports; auth?: AuthOptions; assessment?: AssessmentOptions; runner?: RunnerStatus; trust_proxy?: boolean }) {
   const app = Fastify({
-    logger: false, bodyLimit: 262_144, requestTimeout: 10_000,
+    trustProxy: dependencies.trust_proxy ?? false, logger: false, bodyLimit: 262_144, requestTimeout: 10_000,
     // No coercion or silent removal: reject unknown/mistyped input.
     ajv: { customOptions: { coerceTypes: false, removeAdditional: false, useDefaults: false } },
   }).withTypeProvider<TypeBoxTypeProvider>();
