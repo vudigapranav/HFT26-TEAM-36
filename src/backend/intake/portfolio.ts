@@ -78,8 +78,10 @@ export function parsePortfolioDetailed(input: unknown): DetailedProfile | Portfo
   warnings.push(...t.warnings);
 
   // Profile tech stack = distinct tokens from top-level and all project stacks (domain rules use the same set).
-  const stack = [...new Set([...p.tech_stack, ...p.projects.flatMap(pr => pr.tech_stack)].map(toToken))].slice(0, CAPS.profileStack);
-  const skills = [...new Set(p.skills.map(toToken))].slice(0, CAPS.skills);
+  // Whitespace-only entries normalize to '' and are dropped (the profile contract requires non-empty strings).
+  const tokens = (xs: string[]) => [...new Set(xs.map(toToken).filter(Boolean))];
+  const stack = tokens([...p.tech_stack, ...p.projects.flatMap(pr => pr.tech_stack)]).slice(0, CAPS.profileStack);
+  const skills = tokens(p.skills).slice(0, CAPS.skills);
   const d = detectDomain(new Set([...stack, ...skills]), domainRules);
   if (d.warning) warnings.push(d.warning);
 

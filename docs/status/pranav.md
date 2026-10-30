@@ -40,3 +40,9 @@ Newest entries at the bottom. Written by `/ship`.
 - Seams/contracts affected: none
 - Teammates should know: checkpoint met on main @ 32cd3fd — typecheck clean; 75 tests pass (DB tests pass on real Postgres; Docker tests by Rithvik); full API journey 17/17 through APP_MODE=auth. Docker runner merged but not yet wired (K9). Open product decisions Q1/Q3/Q4 use the context §15 recommendations until changed.
 - Next: frontend with Akshit.
+
+## 2026-10-31 00:50 — hardening — attack review of the integrated API + fuzz fixes
+- Changed: intake/portfolio.ts (drop whitespace-only tokens), scoring/report.ts (row cap, missing topics), tests (fuzz + regressions), scripts/attack-api.py, docs/reviews/2026-10-31-integration-attack.md
+- Seams/contracts affected: none (behavior now always contract-valid)
+- Teammates should know: Karthik — please read docs/reviews/2026-10-31-integration-attack.md findings 2 and 3 (response schemas not enforced; /portfolio body limit). Everyone: `python3 scripts/attack-api.py` re-runs 39 API attacks against a live auth-mode backend.
+- Next: frontend with Akshit.
