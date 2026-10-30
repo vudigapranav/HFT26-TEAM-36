@@ -1,8 +1,5 @@
-import json
-from pathlib import Path
 import random
-import subprocess
-import sys
+import time
 
 import pytest
 
@@ -54,24 +51,12 @@ def test_parser_ignores_blank_lines_and_strips_fields():
 
 
 def test_large_window_performance():
-    # Isolate this call so an O(n^2) candidate fails this test, rather than
-    # consuming the entire 10-second task budget and hiding other results.
-    worker = (
-        "import json,time; from app.window import longest_window; "
-        "codes=['TIMEOUT']*200000; started=time.perf_counter(); "
-        "span=longest_window(codes,1); elapsed=time.perf_counter()-started; "
-        "print(json.dumps({'span':span,'elapsed_sec':elapsed,'n':len(codes)}))"
-    )
-    try:
-        result = subprocess.run(
-            [sys.executable, "-c", worker],
-            cwd=Path(__file__).resolve().parents[1],
-            capture_output=True, text=True, timeout=4.0, check=False,
-        )
-    except subprocess.TimeoutExpired:
-        pytest.fail("200000-input window exceeded the 4-second worker deadline", pytrace=False)
-    assert result.returncode == 0, result.stderr
-    measurement = json.loads(result.stdout)
-    assert measurement["span"] == [0, 200000]
-    assert measurement["n"] == 200000
-    assert measurement["elapsed_sec"] < 2.0, measurement
+    # 30000 records: the O(n) reference takes milliseconds, a window that rescans or copies
+    # the growing span takes seconds. The margin is wide on both sides and the whole run
+    # stays far inside the 10-second candidate budget.
+    codes = ["A"] * 30000
+    started = time.perf_counter()
+    span = longest_window(codes, 1)
+    elapsed = time.perf_counter() - started
+    assert span == (0, 30000)
+    assert elapsed < 0.3, f"30000-record window took {elapsed:.2f}s (limit 0.3s)"

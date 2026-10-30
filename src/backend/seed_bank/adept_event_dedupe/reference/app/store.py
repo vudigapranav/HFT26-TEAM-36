@@ -1,4 +1,4 @@
-from app.models import Event
+from app.models import Event, parse_rows, to_rows
 
 
 class EventStore:
@@ -19,3 +19,8 @@ class EventStore:
             if previous is None or event.ts < previous.ts:
                 earliest[event.event_id] = event
         return list(earliest.values())
+
+
+def deduplicate(rows: list) -> list[tuple[str, str, int]]:
+    """Validate rows, then return one earliest delivery per event_id as tuples."""
+    return to_rows(EventStore(parse_rows(rows)).deduplicated())

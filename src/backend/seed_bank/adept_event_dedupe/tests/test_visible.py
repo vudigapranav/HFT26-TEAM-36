@@ -1,29 +1,27 @@
-from app.models import Event
+import pytest
+
+from app.models import normalize_batch
 from app.service import summarize_events
-from app.store import EventStore
+from app.store import deduplicate
 
 
 def test_counts_are_sorted_and_deduplicated():
-    events = [Event("bob", "b1", 5), Event("amy", "a1", 8),
-              Event("bob", "b1", 3), Event("amy", "a2", 9)]
-    assert summarize_events(events) == [
+    rows = [("bob", "b1", 5), ("amy", "a1", 8), ("bob", "b1", 3), ("amy", "a2", 9)]
+    assert summarize_events(rows) == [
         {"user_id": "amy", "count": 2}, {"user_id": "bob", "count": 1}]
 
 
 def test_store_keeps_earliest_timestamp():
-    events = [Event("later", "shared", 20), Event("earlier", "shared", 4)]
-    assert EventStore(events).deduplicated() == [events[1]]
+    rows = [("later", "shared", 20), ("earlier", "shared", 4)]
+    assert deduplicate(rows) == [("earlier", "shared", 4)]
 
 
-def test_model_preserves_fields():
-    event = Event("amy", "a1", 0)
-    assert (event.user_id, event.event_id, event.ts) == ("amy", "a1", 0)
+def test_normalize_preserves_rows():
+    rows = [("amy", "a1", 0), ("bob", "b1", 7), ("amy", "a1", 3)]
+    assert normalize_batch(rows) == rows
 
 
-def test_snapshot_is_independent():
-    events = [Event("amy", "a1", 1)]
-    store = EventStore(events)
-    events.clear()
-    snapshot = store.snapshot()
-    snapshot.clear()
-    assert store.snapshot() == [Event("amy", "a1", 1)]
+def test_normalize_rejects_bad_rows():
+    for bad in [("amy", "", 1), ("", "a1", 1), ("amy", "a1", -1), ("amy", "a1")]:
+        with pytest.raises(ValueError):
+            normalize_batch([bad])

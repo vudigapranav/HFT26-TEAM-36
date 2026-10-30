@@ -22,7 +22,7 @@ Our current backend supports a Novice seed flow. For the demo, we will show the 
 
 The central design choice is how we grade. An LLM never decides correctness. Deterministic tests do. The validation design checks that a reference solution passes and the starter fails the intended tests before a task reaches a candidate.
 
-Code runs in Docker with no network and resource limits. Hidden tests and reference solutions stay on the server. Anti-tamper hardening is still in progress.
+Code runs in Docker with no network and resource limits, in a separate container from the tests, so it can't read the tests or fake its own report. Hidden tests and reference solutions stay on the server.
 
 In Adept and Master, guarded AI is designed to help without supplying the solution. The model never receives the reference. Input and output checks add protection, although they cannot guarantee perfect resistance.
 
@@ -64,7 +64,7 @@ The score combines independence, pass-rate improvement after assistance and test
 
 ### 7. What prevents candidate code tampering with grading?
 
-The API allows edits only to selected files, supplies trusted tests, hides Submit output and parses results per test ID. Docker supplies isolation. However, candidate code currently shares the pytest interpreter with tests in the supplied runner; hardening is in progress. We do not claim that sophisticated tampering is solved.
+The API allows edits only to selected files, supplies trusted tests and hides Submit output. Grading is split across two containers: the candidate's code runs in one, the tests and the report stay in the other, and they talk only through a narrow, validated channel. Forged reports, forced exits and monkeypatching pytest don't change the grade. Honest limits: the candidate's function does see the test inputs it is called with, and a kernel-level container escape is out of scope.
 
 ### 8. How does it scale?
 

@@ -41,9 +41,10 @@ Speaker note: Replace these placeholders with only the flow rehearsed on the act
 - Deterministic tests decide correctness; the LLM does not grade.
 - Docker isolates execution with network, resource and time limits.
 - Hidden tests and reference solutions stay on the server.
-- **In progress:** live validation and sandbox anti-tamper hardening
+- Candidate code runs in a separate container from the tests and the report.
+- **In progress:** live validation of generated tasks
 
-Speaker note: The validation design requires the reference to pass and the starter to fail the intended tests before release. The runner parses per-test JUnit results rather than relying on exit code alone. Run uses visible tests; Submit adds hidden tests and returns hidden aggregates without stdout/stderr. Isolation is implemented according to the supplied snapshot, but candidate/test interpreter sharing still creates a known tampering risk. Do not claim production-grade grading integrity.
+Speaker note: The validation design requires the reference to pass and the starter to fail the intended tests before release. The runner parses per-test JUnit results rather than relying on exit code alone. Run uses visible tests; Submit adds hidden tests and returns hidden aggregates without stdout/stderr. Since R3 (PR #29, merged 31 Oct ~03:00) grading uses two containers: candidate code runs in an untrusted worker and never sees the test source, expected outputs or the report; forged reports, forced exits and pytest monkeypatching no longer change a grade (20 real-Docker tests, reported by Rithvik). Honest caveat: hidden-test *inputs* reach the candidate's function as arguments, and container escape is out of scope. Do not claim production-grade isolation.
 
 ## Slide 6 — Guarded assistance and AI efficiency
 
