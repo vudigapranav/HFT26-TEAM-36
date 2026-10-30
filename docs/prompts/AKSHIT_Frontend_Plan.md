@@ -60,7 +60,7 @@ server: { port: 5173, proxy: { '/api': { target: 'http://127.0.0.1:3001', change
 | Hint | `POST /assessments/:id/hint` | `{}` → `{level, text}` (max 3) | 409 hints used up |
 | Integrity events | `POST /assessments/:id/events` | `{events:[{task_id, client_ts, type:'tab_hidden'\|'tab_visible'\|'copy'\|'paste', payload:{size?}}]}` (1–100 per call) | — |
 | Report | `GET /reports/:id` | → `{final_score, outcome, tasks:[{passed,total,time_sec,hints_used,aie}], focus_areas, integrity_signals}` | — |
-| Coming later | `POST /assessments/:id/tier/upgrade` (K10), `POST /assessments/:id/assistant` (R5) | build the UI with a disabled state now | 404/503 until merged |
+| Coming later | `POST /assessments/:id/tier/upgrade` (K10; button text "Unlock next questions", no level names), `POST /assessments/:id/assistant` (R5) | build the UI with a disabled state now | 404/503 until merged |
 
 All errors look like `{ error: { code, message, request_id, fields?: [{path, message}] } }`. Show `message`, and highlight each field from `fields`.
 
@@ -77,7 +77,7 @@ the fixed version run). Show it clearly. The UI must work as-is when the Docker 
 | F1 | Landing + register/login | 30 min | Product line "Put your code under torque"; field errors; logout |
 | F2 | Portfolio upload | 45 min | JSON drop zone + paste box + "Use sample" (bundled copy of `normal-web.json`); field errors; parsed result: domain + confidence, claimed topics, **warnings** (yellow), **injection flags** (red) |
 | F3 | Quiz → focus lane → start | 30 min | ≤10 MCQs; lane card (domain/topics/skills); then `POST /assessments` → coding screen; handle 422 `SEED_TOPIC_UNAVAILABLE` |
-| F4 | **Coding environment** (main screen, most judged) | 2 h | file tabs + Monaco; Run / Submit; results table (visible tests + hidden as "3/3 pass"); output console (run only); **server-synced timer**; tier bar (Novice active; Adept/Master locked until K10); Hint button + level badge; assistant panel placeholder; autosave indicator |
+| F4 | **Coding environment** (main screen, most judged) | 2 h | file tabs + Monaco; Run / Submit; results table (visible tests + hidden as "3/3 pass"); output console (run only); **server-synced timer**; **no level names anywhere**; question list + an **"Unlock next questions"** button that appears once every question in the current set has been submitted (max 2 unlocks; wired in K10); Hint button + level badge; assistant panel placeholder; autosave indicator |
 | F5 | Integrity capture (inside F4 only) | 30 min | `visibilitychange` → tab_hidden/tab_visible; `copy`/`paste` on the editor (paste `size`); batched POST every 10 s or 20 events; only while F4 is mounted |
 | F6 | Report | 45 min | big final score /100; outcome; per-task cards (passed/total, time, hints, AI breakdown); focus areas; integrity signals; "Start new assessment" |
 | F7 | Generation progress (stub until K6) | 20 min | steps + validation receipts; today a static "Seed task ready ✓" |
@@ -171,7 +171,7 @@ On load: GET status + GET task. Left: statement (markdown) + visible tests. Cent
 non-editable files). Right/bottom: results table, output console, hint panel, assistant placeholder.
 Autosave: debounced PUT files (~1.5 s). Run/Submit: POST {} after a successful autosave; render visible tests and
 the hidden aggregate; on 503 SANDBOX_UNAVAILABLE show a clear banner (no grade). Timer: server remaining_sec, poll
-status every 15 s, count down locally. Tier bar: Novice active; Adept/Master locked (upgrade wired later). Hint: POST,
+status every 15 s, count down locally. Never show Novice/Adept/Master. Show "Unlock next questions" only when status says unlock is available (K10). Hint: POST,
 show level + text; 409 → "No hints left". Integrity: visibilitychange/copy/paste → batched POST events only while
 this screen is mounted. After Submit or timer 0 → "View report" → /report/:reportId.
 Then run the Ship prompt.

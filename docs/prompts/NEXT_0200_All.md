@@ -5,7 +5,7 @@ Missing for the demo: **Adept + Master tasks (K7)**, tier flow + assistant endpo
 
 PR base is always `vudigapranav/HFT26-TEAM-36` `main`, never cbitosc. Pranav's assistant reviews and merges.
 
-**Pranav locked the §15 defaults (keep `TODO(OPEN-Qn)` markers):** Q1 Novice 15 / Adept 20 / Master 25 min; next tier unlocks when ALL tests of the current tier's final submit pass; upgrading is the candidate's choice. Q3 no demotion. Q4 AIE only for Adept/Master.
+> ⚠️ **03:00 CHANGE — the tier rule below is replaced.** Use `K10_Unlock_Change.md` for Karthik's K10. One 60-minute timer, no 15/20/25 split; everyone starts on Novice questions; after **submitting every question in the current set (correct or not)** the candidate may click "Unlock next questions"; max 2 unlocks; levels never named in the UI. Full rule: context §5.
 
 ---
 

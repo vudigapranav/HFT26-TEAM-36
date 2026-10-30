@@ -139,11 +139,19 @@ Backend module ownership, task order and milestones are in **`docs/TorqueCode_Ba
 5. **The 60-minute assessment** — one single session. **[LOCKED]** The team stated clearly: *"This is not a multiple-session thing. Single session, sixty minutes."*
    - **Everyone starts at the same point: Novice. [LOCKED]** There is no tier choice before the assessment starts.
    - Novice has **no AI assistant**. **[PS]**
-   - When the candidate completes the Novice work well and fast, the **next tier unlocks**. **[LOCKED]** Exact rule: the next tier unlocks when **all tests (visible + hidden) of the current tier's final submit pass**. **[LOCKED — Pranav, 2026-10-31]** (§15, Q1)
-   - **Upgrading is the candidate's choice, not automatic. [LOCKED]** Once unlocked, they can choose to move up, or stay. They never retake the whole test to move up.
-   - Adept and Master include the **guarded AI assistant** beside the editor. **[PS]**
-   - Time split across tiers: **Novice 15 min, Adept 20 min, Master 25 min** (60 in total). **[LOCKED — Pranav, 2026-10-31]** (§15, Q1)
-   - **No demotion.** A candidate who can't solve Adept or Master stays on that tier; declining an upgrade means they keep working on the current tier. **[LOCKED — Pranav, 2026-10-31]** (§15, Q3)
+   - Adept and Master questions include the **guarded AI assistant** beside the editor. **[PS]**
+
+   **Question-set unlock rule [LOCKED — Pranav, 2026-10-31 03:00; replaces the earlier 15/20/25-minute split and the "all tests pass" unlock].**
+   - **One 60-minute session, one timer, no per-level time budgets.**
+   - **Everyone starts on the Novice question set.** A candidate who never unlocks spends the whole 60 minutes on Novice questions.
+   - **Unlock condition = attempted, not solved.** Once the candidate has **attempted every question in the current set** (attempted = at least one **Submit** on that question; the answer does **not** need to be correct), an **"Unlock next questions"** button appears. Unlocking is the candidate's choice.
+   - **At most 2 unlocks** per session: Novice set → Adept set → Master set.
+   - **Never name the level in the assessment UI.** No "Novice / Adept / Master" labels, no named tier bar. Show only "Unlock next questions" (and, if needed, neutral labels like "Question set 2"). The backend still tracks the tier internally (`novice | adept | master`), because the PS tiers drive which questions are served, the AI rules and scoring.
+   - **Earlier questions stay open** after unlocking; the candidate can go back and keep improving them until time runs out. No demotion.
+   - **AI help (hints + guarded assistant) only on Adept/Master questions** (PS). The UI shows the assistant panel on those questions without naming the level.
+   - The **report** (after the session) may name the levels: per-level results are part of the PS's task-wise metrics.
+   - Scoring is unchanged: AIE only for Adept/Master questions; a session with no attempted Adept/Master question scales correctness to 100 (§12, Q4).
+
 6. **Report.** Generated right after the session: task-wise metrics, test pass rates, time taken, AIE score, final outcome, plus where the candidate should focus. Stored behind login. **[PS + LOCKED]**
 
 ---
@@ -213,7 +221,7 @@ The recordings mentioned MCQs, debugging, direct coding, LeetCode-type DSA, syst
 | 6 | Seed-bank fallback when generation fails validation | RECOMMENDED |
 | 7 | Dynamic coding environment: multi-file editor, Run (visible tests), Submit (hidden tests), output console | PS + LOCKED |
 | 8 | Sandboxed execution in containers on our backend server | PS + LOCKED |
-| 9 | Tier flow: start at Novice, unlock next tier, candidate chooses to upgrade | LOCKED |
+| 9 | Question-set flow: everyone starts on Novice questions; after attempting every question in the set, the candidate may "Unlock next questions" (max 2 unlocks); levels are never named in the UI (§5) | LOCKED |
 | 10 | Guarded AI assistant in Adept/Master, with input and output guards | PS |
 | 11 | Interaction logging and deterministic AIE score (≤20%) | PS |
 | 12 | Tab-switch and copy/paste monitoring inside the coding environment only (§8) | LOCKED |
@@ -304,7 +312,7 @@ The recordings mentioned MCQs, debugging, direct coding, LeetCode-type DSA, syst
 
 **A3. Assessment session**
 - One session = 60 minutes. Timer is **server-authoritative**: autosave files, resume after a page refresh, auto-submit at expiry.
-- Tier state machine: `novice_active → adept_unlocked → adept_active → master_unlocked → master_active → finished`. Unlock rule, time split and no-demotion are **[LOCKED — Pranav, 2026-10-31]** (§15, Q1 and Q3).
+- Tier state machine: `novice_active → adept_unlocked → adept_active → master_unlocked → master_active → finished`. Unlock rule (attempt every question in the current set → candidate may unlock, max 2 unlocks), one 60-minute timer with no per-tier budgets, and no demotion are **[LOCKED — Pranav, 2026-10-31 03:00]** (§5, §15 Q1/Q3).
 - The candidate may only edit allow-listed files in each task.
 
 **A4. Execution runner (sandbox)**
@@ -481,7 +489,7 @@ Event types: `file_edit_snapshot, run, submit, hint_request, hint_served, assist
 | POST | `/assessments/{id}/hint` | Next hint-ladder level |
 | POST | `/assessments/{id}/assistant` | Guarded chat message |
 | POST | `/assessments/{id}/events` | Batched frontend events |
-| POST | `/assessments/{id}/tier/upgrade` | Candidate chooses to move up |
+| POST | `/assessments/{id}/tier/upgrade` | Candidate unlocks the next question set (allowed only after every question in the current set has a Submit; max 2). UI label: "Unlock next questions" |
 | GET | `/reports/{id}` | Final report |
 
 ---
@@ -538,7 +546,7 @@ Design rules:
 | **Portfolio upload** | JSON drop zone, schema errors shown per field, sample JSON download, parsed summary (domain, claimed topics) |
 | **Onboarding quiz** | ~10 MCQs, quick and simple |
 | **Generation progress** | Tier-by-tier progress with live validation receipts (e.g., "Reference passes 14/14 ✓, starter fails correctly ✓, topics within claims ✓") |
-| **Coding environment** | File tabs or tree, Monaco editor, Run and Submit buttons, test results panel, output console, server-synced timer, tier bar showing current/unlocked tiers with an "Upgrade" button (candidate's choice), assistant panel (Adept/Master only; hidden in Novice), "Next hint" button, autosave indicator |
+| **Coding environment** | File tabs or tree, Monaco editor, Run and Submit buttons, test results panel, output console, server-synced timer, question list for the current and earlier unlocked sets (no level names), an "Unlock next questions" button that appears once every question in the current set has been submitted (max 2 unlocks; candidate's choice), assistant panel (only on Adept/Master questions; hidden on Novice questions, never labelled by level), "Next hint" button, autosave indicator |
 | **Report** | Overall score, per-task cards, pass-rate charts, time taken, AIE breakdown, focus areas, claims vs demonstrated, integrity signals |
 
 Frontend responsibilities:
@@ -553,9 +561,9 @@ Frontend responsibilities:
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q1 | How is the 60 minutes split across tiers, and what exactly unlocks the next tier (all Novice tests passed? within a time limit?) | **[LOCKED — Pranav, 2026-10-31]** Novice 15 min, Adept 20, Master 25. The next tier unlocks when all tests (visible + hidden) of the current tier's final submit pass. Upgrading is the candidate's choice. |
+| Q1 | How is the 60 minutes split across tiers, and what exactly unlocks the next tier (all Novice tests passed? within a time limit?) | **[LOCKED — Pranav, 2026-10-31 03:00]** No split: one 60-minute timer. Everyone starts on Novice questions. After **attempting** (submitting) every question in the current set — correct or not — the candidate may click "Unlock next questions"; at most 2 unlocks. Levels are never named in the UI. Full rule in §5. |
 | Q2 | Onboarding quiz: what does it decide, and is it inside the 60 minutes? | Outside the 60 minutes, about one minute as the team said, fixed MCQ bank (no LLM), picks one focus lane **among the domains already claimed** in the JSON, never adding new topics. |
-| Q3 | If a candidate fails Adept, do they drop back, or stay? If they decline an upgrade, what do they do with the leftover time? | **[LOCKED — Pranav, 2026-10-31]** No demotion. Declining an upgrade means they keep working on the current tier. |
+| Q3 | If a candidate fails Adept, do they drop back, or stay? If they decline an upgrade, what do they do with the leftover time? | **[LOCKED — Pranav, 2026-10-31 03:00]** No demotion. Earlier questions stay open after unlocking. Not unlocking means they keep working on the questions they have. |
 | Q4 | How does the 20% AIE score apply to Novice tasks? | **[LOCKED — Pranav, 2026-10-31]** AIE is computed over Adept/Master only; Novice is scored on correctness alone. A session with no attempted Adept/Master task scales correctness to 100. |
 | Q5 | Execution engine: self-hosted Judge0 or our own Docker runner? | Own Docker runner on one machine, since Judge0 is one more service to install and configure on the host. Decide in hour one. |
 | Q6 | Backend language and frontend framework? | Backend: decided by the backend team in K0 (proposal: TypeScript, Python where needed — backend plan §0.1). Frontend: whatever Pranav and Akshit are fastest in. |

@@ -38,7 +38,7 @@ Checked against `main` @ `7313627`. Files: `docs/demo/demo-portfolio.json` (main
 
 ## 1:20–2:05 · Novice: find the bug, Run, Submit · ✅ on main (one Novice seed) · FE
 
-1. **Start assessment**. Point at the server-side timer and the tier bar (Novice active). No assistant panel: "Novice gets no AI."
+1. **Start assessment**. Point at the server-side 60-minute timer. No level names on screen, no assistant panel: "Everyone starts on the same first set, without AI."
 2. Open `app/summary.py` (task *Fix the request-volume summary*). Click **Run** with the starter: visible tests fail.
 3. Say: "It's a realistic module with one localized bug, not a blank LeetCode file."
 4. Fix the loop. Change
@@ -47,11 +47,11 @@ Checked against `main` @ `7313627`. Files: `docs/demo/demo-portfolio.json` (main
    `for count in counts: peak = max(peak, count)`.
 5. **Run** → visible tests pass. **Submit** → visible + hidden pass. Say: "Hidden tests never reach the browser; you only see how many passed."
 
-## 2:05–2:20 · Unlock + Upgrade · ⚠️ needs K10 · FE
+## 2:05–2:20 · Unlock next questions · ⚠️ needs K10 · FE
 
-1. Tier bar: **Adept unlocked** (all tests of the Novice final submit passed).
-2. Say: "Moving up is the candidate's choice." Click **Upgrade**.
-- **Cut:** say "the next tier unlocks once every test passes, and upgrading is the candidate's choice" and go straight to the report (skip 2:20–3:15).
+1. Every question in the first set has been submitted, so **"Unlock next questions"** appears (attempting is enough; correctness isn't required).
+2. Say: "Moving on is the candidate's choice, at most twice, and we never tell them the level." Click **Unlock next questions**.
+- **Cut:** say "once you've attempted every question you can unlock the next set, up to twice" and go straight to the report (skip 2:20–3:15).
 
 ## 2:20–3:15 · Adept with the guarded assistant · ⚠️ needs K10 + K7 (Adept seed) + live Featherless key · FE
 
@@ -83,7 +83,7 @@ Checked against `main` @ `7313627`. Files: `docs/demo/demo-portfolio.json` (main
 | Login, upload, quiz, Novice Run/Submit, hint, report (Novice) | API (K2, K3/K4-lite, K9), intake, scoring | ✅ (API only) |
 | Every click | Frontend (Akshit) | ❌ |
 | Runs in the Docker sandbox on the demo machine | R2 + K9 ✅, setup on the demo machine (R6) | ⚠️ R6 not merged |
-| Unlock + Upgrade | K10 | ❌ |
+| Unlock next questions | K10 | ❌ |
 | Adept task | K7 | ❌ |
 | Assistant endpoint (honest + jailbreak) | K10 wiring of R5 (modules ✅) + Featherless key | ❌ |
 | AIE breakdown in the report | K10 (an Adept attempt) | ❌ |

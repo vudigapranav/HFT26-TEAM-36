@@ -2,6 +2,21 @@
 
 Several people build this repo at the same time from separate Claude Code setups (Karthik, Rithvik, Pranav; sometimes Akshit and Aryan). These rules keep the code consistent. Follow them in every session.
 
+## ⚠️ Latest product decision — read before any assessment, tier, API or UI work
+
+**Question-set unlock rule [LOCKED — Pranav, 2026-10-31 03:00; replaces the earlier 15/20/25-minute split and the "all tests pass" unlock].**
+- **One 60-minute session, one timer, no per-level time budgets.**
+- **Everyone starts on the Novice question set.** A candidate who never unlocks spends the whole 60 minutes on Novice questions.
+- **Unlock condition = attempted, not solved.** Once the candidate has **attempted every question in the current set** (attempted = at least one **Submit** on that question; the answer does **not** need to be correct), an **"Unlock next questions"** button appears. Unlocking is the candidate's choice.
+- **At most 2 unlocks** per session: Novice set → Adept set → Master set.
+- **Never name the level in the assessment UI.** No "Novice / Adept / Master" labels, no named tier bar. Show only "Unlock next questions" (and, if needed, neutral labels like "Question set 2"). The backend still tracks the tier internally (`novice | adept | master`), because the PS tiers drive which questions are served, the AI rules and scoring.
+- **Earlier questions stay open** after unlocking; the candidate can go back and keep improving them until time runs out. No demotion.
+- **AI help (hints + guarded assistant) only on Adept/Master questions** (PS). The UI shows the assistant panel on those questions without naming the level.
+- The **report** (after the session) may name the levels: per-level results are part of the PS's task-wise metrics.
+- Scoring is unchanged: AIE only for Adept/Master questions; a session with no attempted Adept/Master question scales correctness to 100 (§12, Q4).
+
+Full text: `docs/TorqueCode_Context.md` §5 and §15 (Q1/Q3). Anything in older prompts, status logs or code comments that says 15/20/25 minutes, "unlock when all tests pass" or shows "Novice/Adept/Master" in the assessment UI is **superseded**.
+
 ## Always-loaded project context
 
 @docs/TorqueCode_Context.md

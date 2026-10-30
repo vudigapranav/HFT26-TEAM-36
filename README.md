@@ -42,10 +42,10 @@ TorqueCode is an **assessment** platform, not a learning platform: the report sh
 
 ```
 Portfolio JSON ──► Onboarding quiz ──► 60-minute assessment ──────────────────────────► Report
- strict schema,     ~10 MCQs, picks     Novice (15 min) ─► Adept (20) ─► Master (25)     pass rates, time,
+ strict schema,     ~10 MCQs, picks     everyone starts on Novice questions; one timer      pass rates, time,
  topic normalizing, a focus lane only   no assistant       guarded AI assistant           AI efficiency score,
- domain detection   from claimed skills next tier unlocks when every test passes;       focus areas,
-                                        upgrading is the candidate's choice; no demotion  integrity signals
+ domain detection   from claimed skills attempt every question → "Unlock next questions"  focus areas,
+                                        (max 2 unlocks; levels never named; no demotion)  integrity signals
                                         Run = visible tests · Submit = visible + hidden
 ```
 
@@ -95,7 +95,7 @@ Merged into `main` and covered by tests:
 | AI efficiency score (context §12 rules) and report builder | ✅ merged |
 | Featherless client (single queue, retries) and guarded assistant + hint provider | ✅ merged as modules; not yet wired into the API |
 
-In progress during the hackathon: the three-tier flow with Upgrade and assistant endpoints, Adept + Master seed tasks, the validation engine, live task generation, sandbox anti-tamper hardening, deployment and the frontend.
+In progress during the hackathon: the question-set unlock flow and assistant endpoints, Adept + Master seed tasks, the validation engine, live task generation, sandbox anti-tamper hardening, deployment and the frontend.
 
 **Future scope (pitch only, not built):** project-based assessments built around the candidate's own repositories, and camera-based proctoring.
 
