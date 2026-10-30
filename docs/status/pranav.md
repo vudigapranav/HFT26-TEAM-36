@@ -67,3 +67,9 @@ Newest entries at the bottom. Written by `/ship`.
 - Seams/contracts affected: none
 - Teammates should know: Karthik (K10) — these are now [LOCKED — Pranav, 2026-10-31]: tiers Novice 15 / Adept 20 / Master 25 min; next tier unlocks when ALL tests (visible+hidden) of the current tier's final submit pass; upgrading is the candidate's choice; no demotion (declining = keep working on the current tier); AIE only for Adept/Master, Novice-only sessions scale correctness to 100 (already what scoring/report.ts does). Existing TODO(OPEN-Q1/Q3/Q4) markers in code can stay or be removed in your own areas; behavior doesn't change.
 - Next: P7 (AIE vs R5 events tests)
+## 2026-10-31 02:30 — P7 — AIE scorer verified against R5 assistant events
+- Changed: src/backend/tests/scoring/aie.test.ts (4 new tests). No scoring code changed: every new test passed against the current scorer.
+- Seams/contracts affected: none
+- Teammates should know: proven — a blocked attempt (assistant_blocked + extraction_flagged) weighs 0 in Independence/HintYield and gives the same score as no AI use, but counts once per attempt in integrity_flags; an LLM outage (no events) changes nothing; 6 delivered assistant_message events → Independence 0; the report's integrity_signals lists both assistant_blocked and extraction_flagged counts. Rithvik's R5 event rules match the scorer as-is.
+- Checks: pnpm typecheck passed; pnpm test 216 passed / 28 skipped (PostgreSQL + Docker) + 9 Python passed; ownership check passed. Needs `uv sync --project src/backend --python 3.13 --locked` first, or 6 seed-runner tests fail with a missing .venv.
+- Next: P8 claims vs demonstrated
