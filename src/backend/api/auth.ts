@@ -3,7 +3,7 @@ import { hash, verify, argon2id } from 'argon2';
 import cookie from '@fastify/cookie';
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { ApiError, AuthCredentials, AuthUserResponse } from '@torquecode/contracts';
+import { ApiError, AuthCredentials, AuthUserResponse, type AuthUser } from '@torquecode/contracts';
 
 export type AuthOptions = { pool: Pool; origin: string; secure: boolean };
 const TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -17,7 +17,7 @@ export async function registerAuth(app: FastifyInstance, options: AuthOptions): 
   const parsed = new URL(origin);
   if (parsed.origin !== origin || (secure ? parsed.protocol !== 'https:' : parsed.protocol !== 'http:' || !['127.0.0.1', '[::1]', 'localhost'].includes(parsed.hostname))) throw new Error('Unsafe auth origin');
   const cookieName = secure ? '__Host-tc_session' : 'tc_session';
-  const cookieOptions = { path: '/', httpOnly: true, secure, sameSite: 'strict' as const };
+  const cookieOptions = { path: '/', httpOnly: true, secure, sameSite: 'lax' as const };
   // Equal-cost missing-account verification. No queue: bound simultaneous expensive work.
   const dummyHash = await hash(randomBytes(32), HASH_OPTIONS);
   let activeHashes = 0;
@@ -83,12 +83,9 @@ export async function registerAuth(app: FastifyInstance, options: AuthOptions): 
     return token && /^[A-Za-z0-9_-]{43}$/.test(token) ? digest(token) : undefined;
   };
   app.get('/auth/me', { schema: { response: { 200: AuthUserResponse, 401: ApiError, 500: ApiError } } }, async (request, reply) => {
-    const tokenHash = sessionHash(request);
-    if (!tokenHash) return failure(request, reply, 401, 'UNAUTHENTICATED');
-    const result = await pool.query(`SELECT u.user_id, u.email FROM auth_sessions s JOIN auth_users u ON s.user_id = u.user_id
-      WHERE s.token_hash = $1 AND s.expires_at > now()`, [tokenHash]);
-    if (!result.rowCount) return failure(request, reply, 401, 'UNAUTHENTICATED');
-    return { user: result.rows[0] };
+    const user = await readAuthUser(request, options);
+    if (!user) return failure(request, reply, 401, 'UNAUTHENTICATED');
+    return { user };
   });
   app.post('/auth/logout', { bodyLimit: 2048, schema: { response: { 204: { type: 'null' }, 403: ApiError, 500: ApiError } } }, async (request, reply) => {
     const tokenHash = sessionHash(request);
@@ -96,4 +93,14 @@ export async function registerAuth(app: FastifyInstance, options: AuthOptions): 
     reply.clearCookie(cookieName, cookieOptions);
     return reply.code(204).send();
   });
+}
+
+
+// Shared by /auth/me and assessment routes; callers cannot choose the authenticated user_id.
+export async function readAuthUser(request: FastifyRequest, options: AuthOptions): Promise<AuthUser | undefined> {
+  const token = request.cookies[options.secure ? '__Host-tc_session' : 'tc_session'];
+  if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return undefined;
+  const result = await options.pool.query(`SELECT u.user_id, u.email FROM auth_sessions s JOIN auth_users u ON s.user_id = u.user_id
+    WHERE s.token_hash = $1 AND s.expires_at > now()`, [digest(token)]);
+  return result.rowCount ? { user_id: result.rows[0].user_id, email: result.rows[0].email } : undefined;
 }

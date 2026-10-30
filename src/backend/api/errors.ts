@@ -1,12 +1,16 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 
+export class HttpProblem extends Error {
+  constructor(readonly statusCode: number, readonly code: string) { super('Request rejected'); }
+}
+
 export function registerErrors(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
     const failure = error as Partial<FastifyError>;
-    const status = failure.statusCode && failure.statusCode >= 400 && failure.statusCode < 500 ? failure.statusCode : 500;
+    const status = error instanceof HttpProblem ? error.statusCode : failure.statusCode && failure.statusCode >= 400 && failure.statusCode < 500 ? failure.statusCode : 500;
     // Never echo the request body, exception message, stack, or schema internals.
     reply.code(status).send({ error: {
-      code: status === 413 ? 'PAYLOAD_TOO_LARGE' : status === 400 ? 'INVALID_REQUEST' : status === 500 ? 'INTERNAL_ERROR' : 'REQUEST_REJECTED',
+      code: error instanceof HttpProblem ? error.code : status === 413 ? 'PAYLOAD_TOO_LARGE' : status === 400 ? 'INVALID_REQUEST' : status === 500 ? 'INTERNAL_ERROR' : 'REQUEST_REJECTED',
       message: status === 500 ? 'Request failed' : 'Request rejected', request_id: request.id,
       ...(failure.validation ? { fields: failure.validation.slice(0, 50).map(issue => ({
         path: (issue.keyword === 'required' && typeof issue.params.missingProperty === 'string'
