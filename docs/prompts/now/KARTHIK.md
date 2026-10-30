@@ -6,7 +6,7 @@
 
 **The product rule now (LOCKED, Pranav 03:00):** one 60-minute timer; everyone starts on Novice questions; after **submitting every question in the current set (correct or not)** the candidate may click **"Unlock next questions"**; max **2** unlocks; **level names are never shown** in the assessment UI (the report may name them); earlier questions stay open; AI help only on Adept/Master questions.
 
-**State of main:** K1–K4-lite, K9 merged. Rithvik's R3 (split-container grading), R4 (Featherless), R5 (guarded assistant, live-tested) merged. K7 seeds merged: `novice_request_summary`, `adept_event_dedupe` (arrays+hashing), `master_session_window` (arrays+sliding_window). **Your order: K10 → K5 → K6 → K8.** K10 is the critical path for the demo.
+**State of main:** K1–K4-lite, K9 merged. Rithvik's R3 (split-container grading), R4 (Featherless), R5 (guarded assistant, live-tested) merged. K7 seeds merged: `novice_request_summary`, `adept_event_dedupe` (arrays+hashing), `master_session_window` (arrays+sliding_window). **Your order: K10 → K11 (PostgreSQL persistence) → K8.** K10 is the critical path; K11 makes it a real app (nothing lost on restart). K5/K6 moved to Rithvik.
 
 ---
 
@@ -80,62 +80,25 @@ Then run the Ship prompt.
 
 ---
 
-## 2. K5 — validation engine (after K10)
+## 2. K11 — PostgreSQL persistence for everything (right after K10) ⚡ demo-critical
 
 ```
-Task K5. Branch karthik/k5-validation from origin/main.
-Implement Ports.validateTask in src/backend/generation/validate.ts — deterministic gates only (context §10.2 B3),
-each gate → { gate, status: pass|fail, reason } in the ValidationReceipt:
-- schema: task + files + tests complete and well-formed
-- topics: task.dsa_topics ⊆ claimed_topics; static scan of the reference (src/backend/tools/topic_scan.py, Python ast,
-  JSON in/out, never import/eval candidate code) flags constructs from unclaimed topics (e.g. heapq when heap isn't claimed)
-- imports: only allow-listed modules (tools/import_check.py)
-- reference: reference passes ALL tests, 3 runs in a row (through Ports.runTests — the Docker runner)
-- starter: f2p_ids fail and p2p_ids pass on the starter; no syntax errors
-- leakage: starter not too similar to the reference (normalized token similarity threshold); hints contain no
-  solution code (long code blocks or high similarity to the reference)
-- differential + performance: implement after the rest; Master tasks only for performance
-Run validateTask over every seed-bank task in a test (all must pass), plus deliberately broken copies that must be
-rejected with clear reasons. Expose receipts so the frontend can show them ("Reference passes 5/5 ✓ …"). Then Ship.
-
-UPDATES (03:20):
-- The reference/starter gates run through Ports.runTests = Rithvik's R3 split-container runner. A run that returns unavailable "Task not supported by the isolated runner" is a FAILED gate called "format": task tests must call candidate functions with plain data only (see src/backend/runner/harness/README.md). Add it as its own gate.
-- Without Docker (CI), mark runner-based gates "skipped: runner unavailable" — never "pass". The local stand-in may only be used for the reviewed seeds.
-- Performance gate (Master): the reference finishes its perf test well inside the limit; the starter fails it.
-- All three current seeds must pass every gate; deliberately broken copies (reference fails; starter passes everything; unclaimed heapq import; a hint containing a reference line) must be rejected with clear reasons.
-- Receipts are public-safe: gate names, pass/fail, counts — never test source or expected values.
+Task K11 — make the assessment side a real database app. Branch karthik/k11-persistence from latest origin/main (after K10 merges). Read CLAUDE.md "Deployment + ownership decision" first.
+Today api/assessment-store.ts keeps profiles + assessments in process memory (lost on restart, max 100). Replace that with PostgreSQL, keeping the same route behaviour:
+1. Migration 002 (numbered, transactional, checksummed like 001_auth.sql): tables for portfolios/profiles (per user, latest + history), assessments (session, current tier/unlocks, timer, status), assessment_tasks (which seed/generated task per set, order), task_files (latest saved editable files per task), runs (run/submit results incl. hidden aggregates — never hidden test source), events (append-only, server timestamps), reports (final report JSON per assessment). Foreign keys to auth_users, ON DELETE CASCADE, indexes on (user_id), (assessment_id, ts).
+2. A repository module (parameterized SQL, pg pool, transactions) behind the existing store interface; the API keeps a small in-process cache only for in-flight run locks. Server restart must lose NOTHING: re-hydrate timers from expires_at on startup and auto-submit any expired active assessment exactly once (idempotent).
+3. Per-user report history: GET /reports (list the caller's reports: id, created_at, final_score, outcome) and GET /reports/:id (unchanged). Ownership enforced in SQL (WHERE user_id = $1).
+4. Remove the 100-profile / 100-assessment caps; keep sane per-user limits (e.g. 1 active assessment, 50 runs/minute) enforced in SQL.
+5. Trusted proxy (needed for Vercel): add TRUST_PROXY=true|false (default false). When true, take the client IP for rate limiting from x-forwarded-for's first hop / x-real-ip; when false, keep today's behaviour. Document it in BACKEND_DECISIONS.md.
+6. Tests: a real-PostgreSQL integration test (use the existing isolated test-auth harness pattern): create assessment → save files → run → submit → restart the app object → status, files, runs, events and report are all still there; expired assessment auto-submits once after restart; user B can't read user A's anything; report list only shows own reports.
+Then run the Ship prompt.
 ```
+
+> **K5 and K6 moved to Rithvik** (Pranav, 03:50). Don't start them; Rithvik owns `generation/` and `tools/` now (you may still edit for integration).
 
 ---
 
-## 3. K6 — generation pipeline (after K5)
-
-```
-Task K6. Branch karthik/k6-generation from origin/main.
-Implement Ports.generateAssessment in src/backend/generation/generate.ts (context §10.2 B2):
-- Prompts as versioned files in generation/prompts/ (never inline strings). Portfolio text is untrusted: delimit it.
-- Staged calls through Ports.chat ONLY (Rithvik's Featherless client): spec → reference + brute force → test inputs.
-  Model output uses tagged sections <file path="...">...</file> plus a small JSON header; parse defensively.
-- Expected outputs are computed by RUNNING the reference (never written by the LLM).
-- Starter derived deterministically from the reference: tools/mutate.py (bug injection: off-by-one, flipped comparison,
-  missing edge case) for bug-fix tasks; tools/stub.py (function-body stubs) for feature tasks.
-- Hint ladder (3 levels) generated, then checked by the leakage gate.
-- validateTask every candidate task; retry up to 3 times feeding back the failing gate's reason; then fall back to the
-  seed bank for that tier (re-skinned to the candidate's domain only if it still validates).
-- Progress callback per tier/stage so the frontend progress screen can show validation receipts live.
-- Generation runs as a background job; POST /assessments returns immediately and status shows progress.
-Tests with Ports.chat mocked: happy path, unparseable output → retry → seed fallback, topic-bound violation rejected.
-One manual script `pnpm gen:smoke` that runs a real generation for tests/fixtures/portfolios/normal-web.json. Then Ship.
-
-UPDATES (03:20):
-- Generated tests MUST follow the R3 harness format (plain-data arguments/returns, builtin exceptions only; no objects, no subprocess, no servers). Put this rule in the generation prompt; the K5 "format" gate enforces it.
-- One task per tier for now (the question-set code supports N).
-- If generation fails or Featherless is unavailable → seed bank for that tier. The demo must work with ZERO LLM calls.
-```
-
----
-
-## 4. K8 — integration (rolling, until the feature freeze)
+## 3. K8 — integration (rolling, until the feature freeze)
 
 ```
 Task K8 — integration. Branch karthik/k8-integration.

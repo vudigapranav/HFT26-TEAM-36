@@ -49,7 +49,9 @@
     "src/backend/llm/*",
     "deploy/*",
     "docker-compose*.yml",
-    "docs/status/rithvik.md"
+    "docs/status/rithvik.md",
+    "src/backend/generation/*",
+    "src/backend/tools/*"
   ],
   "pranav": [
     "src/backend/intake/*",
