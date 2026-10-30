@@ -61,3 +61,15 @@ Newest entries at the bottom. Written by `/ship`.
 - Changed: docs/reviews/2026-10-31-integration-attack.md (update + finding 7)
 - Teammates should know: Rithvik + Karthik — read finding 7 and fix before the demo (a closed Docker Desktop currently turns every run into a graded 0/2 instead of 503). Attack suite now 39/39; journey 17/17; 87 tests + 15 DB tests pass on main.
 - Karthik: pnpm-workspace.yaml still needs "- src/frontend" for Akshit.
+
+## 2026-10-31 02:45 — P8 — claims vs demonstrated (context §13)
+- Changed: src/backend/scoring/claims.ts (new, claimsVsDemonstrated), src/backend/tests/scoring/claims.test.ts (6 tests). Contracts not touched.
+- Seams/contracts affected: needs a contract addition by Karthik (below). Not yet wired into buildReport.
+- Rules: one entry per claimed topic, in profile order. tested_by = a session task whose dsa_topics include the topic and that has a report row, else null. demonstrated = that task's final submit passed every test (passed === total > 0), else false; null when not tested. If several tasks cover the topic: a fully solved one wins, then the higher tier, then task order.
+- Teammates should know: **Karthik** — please add to the Report object in src/backend/contracts/public.ts:
+  `claims: Type.Optional(Type.Array(object({ topic: Topic, tested_by: Type.Union([Id, Type.Null()]), demonstrated: Type.Union([Type.Boolean(), Type.Null()]) }), { maxItems: 19 })),`
+  and add an optional `profile?: CandidateProfile` to the buildReport seam input in contracts/seams.ts, passing the session's parsed profile from the API. Then this one line goes in the object returned by buildReportValue in scoring/report.ts (I'll add it once the contract lands):
+  `...(input.profile ? { claims: claimsVsDemonstrated(input.profile, tasks, rows.map(x => x.row)) } : {}),`
+  **Akshit** — once that ships, the report page can show a "Claims vs demonstrated" table from report.claims (null = not tested this session).
+- Checks: pnpm typecheck passed; pnpm test 218 passed / 28 skipped (PostgreSQL + Docker) + 9 Python passed; ownership check passed.
+- Next: P9 README
