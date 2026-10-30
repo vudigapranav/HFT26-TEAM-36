@@ -25,6 +25,6 @@ export type Context = { signal: AbortSignal };
 export type AssistantContext = { task: Task; files: File[]; visible_failures: TestResult[]; message: string; history: { role: 'user' | 'assistant'; content: string }[] };
 // A separate server-side filter may access reference code; never add it to AssistantContext.
 export type ChatRequest = { messages: { role: 'system' | 'user' | 'assistant'; content: string }[]; model: string; purpose: 'generation' | 'assistant'; max_tokens: number };
-export type Unavailable = { kind: 'unavailable'; code: 'NOT_IMPLEMENTED' | 'SANDBOX_UNAVAILABLE'; message: string };
+export type Unavailable = { kind: 'unavailable'; code: 'NOT_IMPLEMENTED' | 'SANDBOX_UNAVAILABLE' | 'LLM_UNAVAILABLE' | 'INVALID_REQUEST' | 'LLM_UNAVAILABLE' | 'INVALID_REQUEST'; message: string };
 export type Fixture<T> = { kind: 'fixture'; value: T };
 export type SeamResult<T> = { kind: 'ok'; value: T } | Fixture<T> | Unavailable;

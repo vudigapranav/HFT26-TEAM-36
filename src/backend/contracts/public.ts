@@ -42,6 +42,16 @@ export const Task = object({
   visible_tests: Type.Array(object({ id: text(200), path: text(200), content: Type.String({ maxLength: 65_536 }) }), { maxItems: 30 }),
   source: Type.Union([Type.Literal('generated'), Type.Literal('seed_bank')]),
 });
+export const CandidateTask = object({
+  ...Type.Omit(Task, ['tier']).properties,
+  assistant_enabled: Type.Boolean(),
+});
+
+export const AssistantResponse = Type.Union([
+  object({ blocked: Type.Literal(false), reply: Type.String({ maxLength: 10000 }) }),
+  object({ blocked: Type.Literal(true), reason: Type.String({ maxLength: 1000 }) }),
+]);
+
 export const TestResult = object({
   id: text(200),
   status: Type.Enum(['pass', 'fail', 'error', 'timeout']),
@@ -123,15 +133,35 @@ export const FocusLane = object({ domain: Domain, skills: Type.Array(text(100), 
 export const QuizResponse = object({ questions: Type.Array(QuizQuestion, { maxItems: 10 }) });
 export const QuizAnswers = object({ answers: Type.Array(object({ question_id: Id, option_id: Id }), { maxItems: 10 }) });
 export const FocusLaneResponse = object({ focus_lane: FocusLane });
+export const TierAvailability = object({
+  tier: Tier,
+  availability: Type.Enum(['available', 'unavailable']),
+  unlocked: Type.Boolean(),
+  task_id: Type.Optional(Id),
+});
+
 export const AssessmentState = object({
-  assessment_id: Id, report_id: Id, task_id: Id, current_tier: Tier,
-  status: Type.Enum(['active', 'finished']), started_at: Type.String({ format: 'date-time' }),
-  expires_at: Type.String({ format: 'date-time' }), remaining_sec: Type.Integer({ minimum: 0, maximum: 3600 }),
+  assessment_id: Id,
+  report_id: Id,
+  task_id: Id,
+  available_task_ids: Type.Array(Id, { maxItems: 20 }),
+  questions: Type.Array(object({
+    task_id: Id,
+    assistant_enabled: Type.Boolean(),
+  }), { maxItems: 20 }),
+  unlock_available: Type.Boolean(),
+  unlocks_used: Type.Integer({ minimum: 0, maximum: 2 }),
+  status: Type.Enum(['active', 'finished']),
+  started_at: Type.String({ format: 'date-time' }),
+  expires_at: Type.String({ format: 'date-time' }),
+  remaining_sec: Type.Integer({ minimum: 0, maximum: 3600 }),
   policy_todos: Type.Array(Type.String({ maxLength: 80 }), { maxItems: 5 }),
   runner: Type.Enum(['immutable_seed_only', 'isolated']),
-  runner_available: Type.Optional(Type.Boolean()), runner_image: Type.Optional(Type.String({ maxLength: 256 })),
+  runner_available: Type.Optional(Type.Boolean()),
+  runner_image: Type.Optional(Type.String({ maxLength: 256 })),
   auto_submit_error: Type.Optional(Type.String({ maxLength: 80 })),
 });
+
 export const TaskFilesRequest = object({ files: Type.Array(File, { minItems: 1, maxItems: 20 }) });
 export const RunFilesRequest = object({ files: Type.Optional(Type.Array(File, { minItems: 1, maxItems: 20 })) });
 export const HintResponse = object({ level: Type.Integer({ minimum: 1, maximum: 3 }), text: text(4000) });
