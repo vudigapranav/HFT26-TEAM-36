@@ -41,7 +41,7 @@ With several Claude Code setups coding at once, the proposal is **TypeScript for
 
 Framework, database library, package manager and versions are Karthik's choice in K0. The alternative is all-Python; it's simpler for the code-analysis tools, but there are no shared types with the frontend and no compile-time checks between agents.
 
-**Product decisions are not made here.** These include the tier time split, unlock rule, quiz purpose and AI-score scope. They come from the context file §15. Until the team settles each one, it stays a named TODO.
+**Product decisions are not made here.** (Update 31 Oct 03:00: the tier time split and unlock rule are now LOCKED by Pranav — see context §5 and the top of CLAUDE.md.) These include the tier time split, unlock rule, quiz purpose and AI-score scope. They come from the context file §15. Until the team settles each one, it stays a named TODO.
 
 **What doesn't change, whatever the stack** (from the problem statement and context file):
 
@@ -133,7 +133,7 @@ Each task has a **"done when"**: it isn't done until that check passes and the P
 | K0 | **Coding plan:** with Rithvik (and Pranav's input), confirm or change the languages in §0.1, decide everything else in §0, and fill in `docs/BACKEND_DECISIONS.md`, including the exact test command per area. Time-box it to about 30 minutes. | Rithvik and Pranav have read it and agree; it's merged |
 | K1 | **Skeleton (unblocks everyone):** project setup, config, `.env.example`, shared data models, every seam from §3 as a stub, the local stand-in runner, a health endpoint, **seed task 1** (Novice bug-fix) | The others can pull, start the backend, call every stub, and run seed task 1 through the stand-in runner |
 | K2 | Database + login | A user can register, log in, and call a protected endpoint |
-| K3 | Sessions + tiers: create assessment, server-side timer, autosave, tier state machine with unlock + "Upgrade", auto-submit at 60 min | Seed task 1 can be started, run, submitted and unlocked through the API |
+| K3 | Sessions + tiers: create assessment, one 60-min server-side timer, autosave, question-set unlock (attempt every question → "Unlock next questions", max 2, no level names in the UI — context §5), auto-submit at 60 min | Seed task 1 can be started, run, submitted and unlocked through the API |
 | K4 | All API endpoints (context §11.5), wiring in Pranav's and Rithvik's seams; generation as a background job with progress | The frontend can complete the whole journey against the real backend |
 | K5 | Validation engine: the gates in context §10.2 B3 (schema, topic bound, import allow-list, reference passes repeatedly, starter fails correctly, statement examples, leakage; then differential and performance) | Seed tasks pass; deliberately broken tasks are rejected with clear reasons |
 | K6 | Generation pipeline (context §10.2 B2): staged prompts → parse output → expected outputs computed by running the reference → starter derived deterministically → validate → retry with feedback → seed-bank fallback; includes the 3-level hint ladder | A sample portfolio yields 3 validated tasks, or seed-bank tasks re-skinned to its domain |
