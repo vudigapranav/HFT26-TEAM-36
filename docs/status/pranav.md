@@ -62,6 +62,28 @@ Newest entries at the bottom. Written by `/ship`.
 - Teammates should know: Rithvik + Karthik — read finding 7 and fix before the demo (a closed Docker Desktop currently turns every run into a graded 0/2 instead of 503). Attack suite now 39/39; journey 17/17; 87 tests + 15 DB tests pass on main.
 - Karthik: pnpm-workspace.yaml still needs "- src/frontend" for Akshit.
 
+## 2026-10-31 02:15 — P6 — lock product decisions Q1, Q3, Q4
+- Changed: docs/TorqueCode_Context.md (§5 journey bullets, §10.1 A3, §12 Novice note, §15 rows Q1/Q3/Q4) — docs only
+- Seams/contracts affected: none
+- Teammates should know: Karthik (K10) — these are now [LOCKED — Pranav, 2026-10-31]: tiers Novice 15 / Adept 20 / Master 25 min; next tier unlocks when ALL tests (visible+hidden) of the current tier's final submit pass; upgrading is the candidate's choice; no demotion (declining = keep working on the current tier); AIE only for Adept/Master, Novice-only sessions scale correctness to 100 (already what scoring/report.ts does). Existing TODO(OPEN-Q1/Q3/Q4) markers in code can stay or be removed in your own areas; behavior doesn't change.
+- Next: P7 (AIE vs R5 events tests)
+## 2026-10-31 02:30 — P7 — AIE scorer verified against R5 assistant events
+- Changed: src/backend/tests/scoring/aie.test.ts (4 new tests). No scoring code changed: every new test passed against the current scorer.
+- Seams/contracts affected: none
+- Teammates should know: proven — a blocked attempt (assistant_blocked + extraction_flagged) weighs 0 in Independence/HintYield and gives the same score as no AI use, but counts once per attempt in integrity_flags; an LLM outage (no events) changes nothing; 6 delivered assistant_message events → Independence 0; the report's integrity_signals lists both assistant_blocked and extraction_flagged counts. Rithvik's R5 event rules match the scorer as-is.
+- Checks: pnpm typecheck passed; pnpm test 216 passed / 28 skipped (PostgreSQL + Docker) + 9 Python passed; ownership check passed. Needs `uv sync --project src/backend --python 3.13 --locked` first, or 6 seed-runner tests fail with a missing .venv.
+- Next: P8 claims vs demonstrated
+## 2026-10-31 02:45 — P8 — claims vs demonstrated (context §13)
+- Changed: src/backend/scoring/claims.ts (new, claimsVsDemonstrated), src/backend/tests/scoring/claims.test.ts (6 tests). Contracts not touched.
+- Seams/contracts affected: needs a contract addition by Karthik (below). Not yet wired into buildReport.
+- Rules: one entry per claimed topic, in profile order. tested_by = a session task whose dsa_topics include the topic and that has a report row, else null. demonstrated = that task's final submit passed every test (passed === total > 0), else false; null when not tested. If several tasks cover the topic: a fully solved one wins, then the higher tier, then task order.
+- Teammates should know: **Karthik** — please add to the Report object in src/backend/contracts/public.ts:
+  `claims: Type.Optional(Type.Array(object({ topic: Topic, tested_by: Type.Union([Id, Type.Null()]), demonstrated: Type.Union([Type.Boolean(), Type.Null()]) }), { maxItems: 19 })),`
+  and add an optional `profile?: CandidateProfile` to the buildReport seam input in contracts/seams.ts, passing the session's parsed profile from the API. Then this one line goes in the object returned by buildReportValue in scoring/report.ts (I'll add it once the contract lands):
+  `...(input.profile ? { claims: claimsVsDemonstrated(input.profile, tasks, rows.map(x => x.row)) } : {}),`
+  **Akshit** — once that ships, the report page can show a "Claims vs demonstrated" table from report.claims (null = not tested this session).
+- Checks: pnpm typecheck passed; pnpm test 218 passed / 28 skipped (PostgreSQL + Docker) + 9 Python passed; ownership check passed.
+- Next: P9 README
 ## 2026-10-31 03:00 — P9 — submission README
 - Changed: README.md (replaces the starter template: problem, solution, how it works, architecture from context §9, real-vs-next table, setup, security/integrity design, honest limitations, team PAARK roles, demo link placeholder). Docs only.
 - Seams/contracts affected: none
