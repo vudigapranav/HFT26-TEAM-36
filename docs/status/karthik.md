@@ -7,7 +7,7 @@ This file distinguishes implementation, executed verification, integration readi
 | Task | Implementation | Verification / integration |
 |---|---|---|
 | K0 decisions | Stack approved; Karthik confirmed team agreement. Decisions documented. | User re-confirmed original contracts after reading later checkpoint prompts; K1 PR pending. |
-| K1 skeleton/contracts/seed | Implemented in the team checkout; ready for review, not committed/merged. | Initial verification was 14 tests. Skill-assisted review now adds five TS cases and four real Python cases; final integrated verification below. |
+| K1 skeleton/contracts/seed | Implemented, reviewed and committed on karthik/k1-skeleton; PR/merge pending. | Initial verification was 14 tests. Skill-assisted review now adds five TS cases and four real Python cases; final integrated verification below. |
 | K2 database/login | Not started | Not tested |
 | K3 sessions/timer/tiers | Not started | Blocked on product policies and real runner for candidate flow |
 | K4 complete API/background jobs | Not started | Not tested |
@@ -16,7 +16,7 @@ This file distinguishes implementation, executed verification, integration readi
 | K7 Adept/Master seeds | Not started | Novice seed only in K1 |
 | K8 end-to-end integration | Not started | Shared seam smoke is not the full assessment journey |
 
-## Current verification
+## Initial K1 verification (before skill-assisted repairs)
 
 Verified first in a temporary build, then in this actual team checkout on 2026-10-30 (Asia/Kolkata). All results below were observed; checks are not a claim of exhaustive correctness.
 
@@ -42,14 +42,14 @@ No test results are simulated. Development fixtures are labelled. No coverage pe
 
 ## Integration notes
 
-- Work stays on `karthik/backend`; no commit, push, rebase, merge or branch switch is performed.
-- Pranav's `setup-kit` branch is only locally inspected. Canonical backend split there is identical to the supplied document. Preserve this filled decisions file when that kit lands.
+- Current task branch is `karthik/k1-skeleton`, created from updated `origin/main`; Karthik authorized reviewing, fixing and shipping original K1, then waiting for “next”. The original branch and backup stash are retained.
+- Pranav's setup kit and canonical backend plan are inherited from updated `origin/main`. The filled decisions file and uv.lock ownership addition are preserved.
 - Public contracts package and ten server-side seams are K1's main integration deliverable. No changes to frontend, intake, scoring, LLM or real runner/deployment modules.
 - Candidate execution, live generation, authentication, database, grading policies and full frontend journey are not ready.
 
 ## Next
 
-Review K1. Next implementation is K2: PostgreSQL schema, registration, login and a protected endpoint. Product policies stay open for later tasks. Karthik reviews backend integration; Pranav owns final merge. No commit/push/merge has been performed.
+Ship reviewed K1 to `vudigapranav/HFT26-TEAM-36` main, then wait for Karthik’s explicit “next”. K2 is not started. Product policies stay open; Pranav retains final merge ownership.
 
 ## 2026-10-30 23:23 IST — K1 — verified skeleton ready for review
 
@@ -110,3 +110,13 @@ Use TypeBox public schemas/package, snake_case models and the ten functions in c
 ### Next
 
 Finalize integrated tests, documentation audit, pre-push hook and PR to vudigapranav/HFT26-TEAM-36 main. Do not target cbitosc. Stop after shipping K1 and wait for Karthik's “next”.
+
+## 2026-10-30 23:49 IST — K1 — final review and security-hook verification
+
+- Changed: corrected stale current branch/setup-kit documentation while preserving dated history. The synthetic nested fixture marker was renamed to privateProbe/NESTED_LEAK_CANARY; both direct projection and HTTP serialization assert its property and value never escape. Security hook code and original private-data assertions are unchanged.
+- Seams/contracts affected: none by the review repairs. User-approved TypeBox/snake_case/ten-seam compatibility exception remains explicit for Pranav and Rithvik.
+- Verification: affected contract test 3/3; full suite 19 Vitest + 4 real Python tests; strict TypeScript checking, build, ten-seam smoke and repeated seed checks passed. Recommended Node 24 repaired suite also passed 19/19; compiled HTTP health returned 200. Latest marker-only change was tested with the affected and full suites plus typecheck. No coverage percentage is claimed.
+- Security/ownership: original .githooks/pre-push passed on committed 7ad9158 using its normal stdin protocol, before this docs-only correction; no push was performed by that check. The publication push must run the same hook again. Changes stay in Karthik-owned/shared paths; teammate modules remain untouched.
+- Review coverage: all five requested skills were loaded; concrete effects and three red-before-green repairs are documented above. Native adversarial re-review found no remaining confirmed code defects. Test-quality review noted optional gaps: runtime schema checks for every fixture payload, intact-Unicode preservation below the cap, and explicit descendant-process liveness assertions. No external Claude review or complete candidate-sandbox certification is claimed.
+- Teammates should know: large/empty-topic intake behavior needs agreement before P1/K4 wiring; Python-only runtime support is not a promise of every candidate stack; no K1b/K2 endpoints were added.
+- Git/workflow: K1 implementation and marker repair are committed/pushed by the user as 7ad9158; documentation correction and PR publication remain. Base is the team fork's main, never cbitosc. Wait for “next” after K1 shipping.
