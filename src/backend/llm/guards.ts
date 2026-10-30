@@ -23,6 +23,12 @@ const INPUT_RULES: [code: string, pattern: RegExp][] = [
   ['format_laundering', /\b(?:exact|complete|full|whole|line[- ]by[- ]line|every line|detailed)\b[^.?!\n]{0,30}\bpseudo-?code\b|\bpseudo-?code\b[^.?!\n]{0,40}\b(?:whole|full|entire|complete|every line|exact)\b/i],
   ['translation_laundering', /\b(?:write|give|show|rewrite|translate|port|convert)\b[^.?!\n]{0,40}\b(?:solution|answer|fix|it|function|code)\b[^.?!\n]{0,30}\b(?:in|into|to) (?:javascript|typescript|java|c\+\+|c#|golang|go|rust|ruby|php|kotlin|swift|another language|a different language|other language)\b/i],
   ['roleplay', /\b(?:let'?s play|pretend|act as|role-?play|you are my|imagine (?:you are|you're)|from now on you are)\b[^\n]{0,100}\b(?:type|write|code|solution|engineer|no restrictions|without (?:any )?(?:restrictions|limits)|always)\b/i],
+  // Found by the live evaluation (R5-live P2/P3/P4/P6): asking for the fixed form without saying "solution".
+  ['fix_description', /\b(?:what|how) would (?:the|a|my) (?:fixed|corrected|correct|working|finished) (?:function|code|version|loop|line|file|solution)\b[^.?!\n]{0,20}\blook\b/i],
+  ['fix_description', /\bexactly what (?:to|i should|should i) (?:change|write|type|replace|put)\b|\bcharacter[- ]by[- ]character\b/i],
+  // "what should the loop header be?" asks for the edit itself; "what should the output be?" does not match.
+  ['fix_description', /\bwhat (?:exactly )?should (?:the|that|this|my) (?:loop|line|header|condition|expression|range|bound|code|statement|call|return)\b[a-z ]{0,20}\bbe\b/i],
+  ['fix_description', /\b(?:as it should (?:read|look|be)|after the fix|once (?:it'?s|it is) fixed)\b/i],
   // Needs an explicit request: Security-domain tasks legitimately talk about passwords and tokens.
   ['secret_request', new RegExp(String.raw`\b${ASK}\b[^.?!\n]{0,40}(?:\b(?:your|the server'?s?|the grader'?s?|featherless|openai|platform)\b[^.?!\n]{0,20})(?:api[ _-]?keys?|secret keys?|access tokens?|credentials|env(?:ironment)? variables?|\.env\b|config(?:uration)?)`, 'i')],
 ];
@@ -112,11 +118,44 @@ export function checkOutput(reply: string, context: { files: File[]; fingerprint
     const defined = /^\s*(?:def|class)\s+([A-Za-z_]\w*)/.exec(line)?.[1];
     if (defined && symbols.has(defined)) return { ok: false, code: 'task_function_implementation' };
   }
+  const inline = [...reply.matchAll(/`([^`\n]+)`/g)].map(match => match[1]!);
   if (context.fingerprint && context.fingerprint.size > 0) {
     const replyLines = new Set(reply.split('\n').map(normalizeLine).filter(line => line.length >= 12));
     // Also catch a fix written inline in prose ("change it to `for i in range(len(counts))`").
-    const inline = [...reply.matchAll(/`([^`\n]{8,})`/g)].map(match => normalizeLine(match[1]!));
-    for (const line of [...replyLines, ...inline]) if (context.fingerprint.has(line)) return { ok: false, code: 'reference_similarity' };
+    for (const line of [...replyLines, ...inline.map(normalizeLine)]) if (context.fingerprint.has(line)) return { ok: false, code: 'reference_similarity' };
+    // Fragments of a fix line count too (live eval: "`for count in counts` ... `max(peak, count)`").
+    for (const fragment of [...inline, ...codeLines].map(normalizeLine).filter(f => f.length >= 10)) {
+      for (const line of context.fingerprint) if (line.includes(fragment)) return { ok: false, code: 'reference_similarity' };
+    }
   }
+  // New task-specific code: an expression that uses the candidate's own names but isn't in
+  // their files is a prescribed edit. For one-token bugs (the live eval's "change
+  // `range(len(counts) - 1)` to `range(len(counts))`") that IS the solution, reference or not.
+  const names = taskIdentifiers(context.files);
+  const existing = context.files.map(file => file.content.split('\n').map(normalizeLine).join('\n')).join('\n');
+  for (const fragment of [...inline, ...codeLines]) if (isNewTaskCode(fragment, names, existing)) return { ok: false, code: 'new_task_code' };
   return { ok: true };
+}
+
+const COMMON_NAMES = new Set(('def return for in range len max min sum list dict set int str float bool None True False if else elif while '
+  + 'import from as with not and or is lambda pass break continue class try except finally raise yield print sorted enumerate zip map '
+  + 'filter abs any all self open sorted reversed append extend items keys values get pop').split(' '));
+
+/** Identifiers the candidate's code defines or uses (strings and comments removed), minus common names. */
+export function taskIdentifiers(files: File[]): Set<string> {
+  const names = new Set<string>();
+  for (const file of files) {
+    const code = file.content.replace(/"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|#.*$/gm, ' ');
+    for (const match of code.matchAll(/\b[A-Za-z_]\w*\b/g)) if (match[0].length >= 3 && !COMMON_NAMES.has(match[0])) names.add(match[0]);
+  }
+  return names;
+}
+
+function isNewTaskCode(fragment: string, names: Set<string>, existing: string): boolean {
+  const normal = normalizeLine(fragment);
+  if (normal.length < 6 || /^[\w.]+$/.test(normal)) return false; // bare names/numbers
+  if (/^(?:print|repr|type|len|assert)\(/.test(normal)) return false; // debugging suggestions
+  if (!/[()[\]=:<>+\-*/%]/.test(normal)) return false; // not code-like
+  if (![...fragment.matchAll(/\b[A-Za-z_]\w*\b/g)].some(match => names.has(match[0]))) return false; // generic example
+  return !existing.includes(normal); // quoting the candidate's own code is fine
 }

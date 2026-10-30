@@ -12,6 +12,7 @@
     "test:seed1": "node --import tsx api/check-seed.ts",
     "openapi": "node --import tsx api/openapi.ts",
     "db:migrate": "node --import tsx api/db/command.ts",
+    "llm:eval": "node --env-file-if-exists=../../.env --import tsx llm/live-eval.ts",
     "llm:smoke": "node --env-file-if-exists=../../.env --import tsx llm/smoke.ts"
   },
   "dependencies": {
