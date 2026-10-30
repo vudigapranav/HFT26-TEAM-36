@@ -56,3 +56,8 @@ Newest entries at the bottom. Written by `/ship`.
 ## 2026-10-31 00:55 — frontend plan: Akshit is the sole frontend owner (OpenCode)
 - Changed: docs/prompts/AKSHIT_Frontend_Plan.md — all screens F0–F8 assigned to Akshit in build order; OpenCode session-opener + Ship prompts (no /start or /ship there).
 - Teammates should know: Pranav is not building frontend; he reviews/merges. Karthik — still please add "- src/frontend" to pnpm-workspace.yaml.
+
+## 2026-10-31 01:00 — review — K9 merged; HIGH finding: Docker daemon down ⇒ fake 0 grade
+- Changed: docs/reviews/2026-10-31-integration-attack.md (update + finding 7)
+- Teammates should know: Rithvik + Karthik — read finding 7 and fix before the demo (a closed Docker Desktop currently turns every run into a graded 0/2 instead of 503). Attack suite now 39/39; journey 17/17; 87 tests + 15 DB tests pass on main.
+- Karthik: pnpm-workspace.yaml still needs "- src/frontend" for Akshit.
