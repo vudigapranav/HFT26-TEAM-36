@@ -89,6 +89,7 @@ def portfolio():
     demo = json.loads((REPO / "docs/demo/demo-portfolio.json").read_text())
     _, b = call("POST", "/portfolio", demo)
     prof = b.get("profile", {})
+    S["claimed_topics"] = prof.get("claimed_topics", [])
     need(prof.get("domain") == "backend", f"expected domain backend, got {prof.get('domain')}")
     return f"domain {prof.get('domain')}, topics {', '.join(prof.get('claimed_topics', []))}, {len(b.get('warnings', []))} warnings"
 
@@ -182,6 +183,12 @@ def help_set2():
 def report():
     _, r = call("GET", f"/reports/{S['rid']}")
     need(isinstance(r.get("final_score"), (int, float)) and 0 <= r["final_score"] <= 100, "final_score missing or out of range")
+    claims = r.get("claims")
+    need(isinstance(claims, list), "claims-vs-demonstrated missing from report")
+    need([c.get("topic") for c in claims] == S["claimed_topics"], "report claims differ from the uploaded assessment profile")
+    need(all((c.get("tested_by") is None and c.get("demonstrated") is None) or
+             (isinstance(c.get("tested_by"), str) and isinstance(c.get("demonstrated"), bool)) for c in claims),
+         "claim evidence must be a task plus boolean, or null/null when untested")
     rows = r.get("tasks", [])
     need(len(rows) == len(S.get("done", ())), f"expected {len(S.get('done', ()))} task rows, got {len(rows)}")
     aie = [x for x in rows if x.get("aie")]

@@ -65,7 +65,11 @@
     ".githooks/*",
     "scripts/*",
     ".gitignore",
-    ".env.example"
+    ".env.example",
+    "src/backend/contracts/public.ts",
+    "src/backend/contracts/seams.ts",
+    "src/backend/api/assessments.ts",
+    "src/backend/api/assessment-store.ts"
   ],
   "akshit": [
     "src/frontend/*",
