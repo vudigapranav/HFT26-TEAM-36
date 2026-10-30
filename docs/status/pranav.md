@@ -62,6 +62,11 @@ Newest entries at the bottom. Written by `/ship`.
 - Teammates should know: Rithvik + Karthik — read finding 7 and fix before the demo (a closed Docker Desktop currently turns every run into a graded 0/2 instead of 503). Attack suite now 39/39; journey 17/17; 87 tests + 15 DB tests pass on main.
 - Karthik: pnpm-workspace.yaml still needs "- src/frontend" for Akshit.
 
+## 2026-10-31 02:15 — P6 — lock product decisions Q1, Q3, Q4
+- Changed: docs/TorqueCode_Context.md (§5 journey bullets, §10.1 A3, §12 Novice note, §15 rows Q1/Q3/Q4) — docs only
+- Seams/contracts affected: none
+- Teammates should know: Karthik (K10) — these are now [LOCKED — Pranav, 2026-10-31]: tiers Novice 15 / Adept 20 / Master 25 min; next tier unlocks when ALL tests (visible+hidden) of the current tier's final submit pass; upgrading is the candidate's choice; no demotion (declining = keep working on the current tier); AIE only for Adept/Master, Novice-only sessions scale correctness to 100 (already what scoring/report.ts does). Existing TODO(OPEN-Q1/Q3/Q4) markers in code can stay or be removed in your own areas; behavior doesn't change.
+- Next: P7 (AIE vs R5 events tests)
 ## 2026-10-31 02:30 — P7 — AIE scorer verified against R5 assistant events
 - Changed: src/backend/tests/scoring/aie.test.ts (4 new tests). No scoring code changed: every new test passed against the current scorer.
 - Seams/contracts affected: none
