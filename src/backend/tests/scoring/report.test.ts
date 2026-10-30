@@ -77,6 +77,23 @@ describe('buildReport (P5)', () => {
 });
 
 describe('buildReport — hardening (found by fuzzing)', () => {
+  it('does not call a multi-question tier solved when another question is untouched', () => {
+    const other = mkTask('ade2', 'adept', ['hashing']);
+    const events = [submit('nov', 100, 5), submit('ade', 200, 5)];
+    const r = buildReportValue({ session, tasks: [novice, adept, other], runs, events });
+    expect(r.outcome).toContain('Solved 2 of 3 task(s)');
+    expect(r.outcome).toContain('highest tier fully solved: novice');
+  });
+
+  it('requires every question to pass its latest submit before a tier is fully solved', () => {
+    const other = mkTask('ade2', 'adept', ['hashing']);
+    const events = [submit('ade', 100, 5), submit('ade2', 200, 5), submit('ade2', 300, 4)];
+    const input = { session, tasks: [adept, other], runs, events };
+    expect(buildReportValue(input).outcome).toContain('Solved 1 of 2 task(s); no tier fully solved yet.');
+    events.push(submit('ade2', 400, 5));
+    expect(buildReportValue(input).outcome).toContain('Solved 2 of 2 task(s); highest tier fully solved: adept');
+  });
+
   it('caps task rows at the contract limit and survives a task without dsa_topics', () => {
     const many = Array.from({ length: 25 }, (_, i) => mkTask(`t${i}`, 'novice', ['arrays']));
     const noTopics = { ...mkTask('nt', 'novice', ['arrays']), dsa_topics: undefined } as unknown as PrivateTask;

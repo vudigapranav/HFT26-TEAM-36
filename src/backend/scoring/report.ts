@@ -74,14 +74,17 @@ export function buildReportValue(input: { session: Session; tasks: PrivateTask[]
   const aiePart = aieRows.length ? aieRows.reduce((s, x) => s + (x.aie?.score ?? 0), 0) / aieRows.length : null;
   const final_score = aiePart === null ? r2(100 * correctness) : r2(CORRECTNESS_WEIGHT * correctness + aiePart);
 
-  // Outcome: highest tier whose task was fully solved on its final submit.
-  const solvedTiers = rows.filter(x => x.final && x.final.total > 0 && x.final.passed === x.final.total).map(x => x.task.tier);
-  const highest = [...TIER_ORDER].reverse().find(t => solvedTiers.includes(t));
-  const solved = solvedTiers.length;
+  // A tier is fully solved only when every offered question passes its latest submit.
+  const fullySolved = (x: (typeof rows)[number]) => !!x.final && x.final.total > 0 && x.final.passed === x.final.total;
+  const highest = [...TIER_ORDER].reverse().find(t => {
+    const tierRows = rows.filter(x => x.task.tier === t);
+    return tierRows.length > 0 && tierRows.every(fullySolved);
+  });
+  const solved = rows.filter(fullySolved).length;
   const unlocked = `Unlocked ${Math.min(reached, MAX_UNLOCKS)} of ${MAX_UNLOCKS} further question sets.`;
   const outcome = highest
     ? `Solved ${solved} of ${rows.length} task(s); highest tier fully solved: ${highest}. ${unlocked}`
-    : `Solved 0 of ${rows.length} task(s); no tier fully solved yet. ${unlocked}`;
+    : `Solved ${solved} of ${rows.length} task(s); no tier fully solved yet. ${unlocked}`;
 
   // Focus areas: topics of tasks not fully solved, then behaviour signals from the AI score.
   const focus = new Set<string>();

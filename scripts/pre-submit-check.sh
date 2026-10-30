@@ -3,7 +3,8 @@
 #   bash scripts/pre-submit-check.sh
 # Needs pnpm + uv set up (see README "Setup"). For the attack suite, start the backend first in auth mode on
 # http://127.0.0.1:3001, e.g. deploy/start.sh. Another address: TORQUECODE_API=http://127.0.0.1:3002 bash scripts/pre-submit-check.sh
-# Prints a ✅/❌ checklist and exits 1 if anything failed. Never prints secret values, only file:line locations.
+# Prints a ✅/❌ checklist and exits 1 if anything failed or required checks were skipped.
+# Never prints secret values, only file:line locations.
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
@@ -21,16 +22,22 @@ else fail "pnpm typecheck (see output below)"; tail -n 20 "$LOG/typecheck.txt"; 
 
 echo "== 2/4 tests"
 if pnpm test >"$LOG/test.txt" 2>&1; then
-  ok "pnpm test — $(grep -E '^ +Tests ' "$LOG/test.txt" | sed -E 's/^ +Tests +//' | paste -sd ';' -)"
+  if grep -Eq 'SKIP PostgreSQL|[1-9][0-9]* skipped' "$LOG/test.txt"; then
+    fail "pnpm test — required tests skipped; verify with PostgreSQL and Docker available"
+    grep -E 'Tests |SKIP PostgreSQL' "$LOG/test.txt" | tail -n 10
+  else
+    ok "pnpm test — $(grep -E '^ +Tests ' "$LOG/test.txt" | sed -E 's/^ +Tests +//' | paste -sd ';' -)"
+  fi
 else
   fail "pnpm test (see output below)"; grep -E 'FAIL|Tests ' "$LOG/test.txt" | tail -n 20
 fi
 
 echo "== 3/4 attack suite against $API"
 if curl -sf -o /dev/null --max-time 5 "$API/health"; then
-  TORQUECODE_API="$API" python3 scripts/attack-api.py >"$LOG/attack.txt" 2>&1
+  attack_status=0
+  TORQUECODE_API="$API" python3 scripts/attack-api.py >"$LOG/attack.txt" 2>&1 || attack_status=$?
   summary="$(grep -E '^[0-9]+ pass / [0-9]+ fail( \([0-9]+ skipped\))?$' "$LOG/attack.txt" | tail -n 1)"
-  if [[ "$summary" =~ ^[0-9]+\ pass\ /\ 0\ fail ]]; then ok "attack suite — $summary"
+  if [[ "$attack_status" -eq 0 && "$summary" =~ ^[1-9][0-9]*\ pass\ /\ 0\ fail$ ]]; then ok "attack suite — $summary"
   else fail "attack suite — ${summary:-did not finish}"; grep -E '^❌|Error|Traceback' "$LOG/attack.txt" | head -n 20; fi
 else
   fail "attack suite — no backend at $API (start it in auth mode, then re-run)"

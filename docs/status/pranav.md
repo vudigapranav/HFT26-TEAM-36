@@ -163,3 +163,11 @@ Newest entries at the bottom. Written by `/ship`.
 - Note: P14 (#47) and P15 (#48) are still open, so their results aren't cited as merged facts.
 - Seams/contracts affected: none
 - Next: P13 when Report.claims lands.
+
+## 2026-10-31 — P17 — report correctness and submission verification
+
+- Baseline: main `956dcbb`; no open GitHub PRs at review or pre-publication refresh.
+- Fixed report outcomes for multi-question tiers: all offered questions must pass their latest submit before calling a tier fully solved; preserve solved-question count when no complete tier passes. Two regression tests failed before the fix and pass afterward.
+- Submission checker now fails on skipped tests/attacks, zero attacks, and nonzero attack-process exit. Six command-fixture tests pass. Pitch facts updated for the already merged K5 receipt correction (#51).
+- Checks: typecheck/build passed; backend 288 passed / 55 skipped; Python reporter 4 passed; separate real isolated PostgreSQL auth 9 passed; release-check fixture tests 6 passed; ownership, shell syntax and diff checks passed. Docker unavailable; no live LLM/browser/cloud verification claimed.
+- Handoff: docs/reviews/2026-10-31-pranav-readiness.md records remaining frontend, K11, K6, P13 contract and deployment dependencies. P13 remains dependent on Karthik's contract additions; no teammate-owned source was edited.
