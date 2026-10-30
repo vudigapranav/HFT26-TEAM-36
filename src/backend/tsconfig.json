@@ -10,8 +10,25 @@
     "skipLibCheck": true,
     "rootDir": ".",
     "outDir": "dist",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["api/**/*.ts", "contracts/*.ts", "runner/local/**/*.ts", "tests/**/*.ts", "vitest.config.ts"],
-  "exclude": ["dist", "node_modules", "contracts/dist"]
+  "include": [
+    "api/**/*.ts",
+    "contracts/*.ts",
+    "runner/local/**/*.ts",
+    "tests/**/*.ts",
+    "vitest.config.ts",
+    "runner/**/*.ts",
+    "intake/**/*.ts",
+    "scoring/**/*.ts",
+    "llm/**/*.ts",
+    "generation/**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "contracts/dist"
+  ]
 }

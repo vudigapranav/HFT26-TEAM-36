@@ -65,7 +65,11 @@ export const ApiError = object({ error: object({
   code: text(80), message: text(300), request_id: text(100),
   fields: Type.Optional(Type.Array(object({ path: text(200), message: text(300) }), { maxItems: 50 })),
 }) });
-export const Health = object({ status: Type.Literal('ok'), mode: Type.Enum(['skeleton', 'auth']), candidate_execution: Type.Literal(false) });
+export const Health = object({
+  status: Type.Enum(['ok', 'degraded']), mode: Type.Enum(['skeleton', 'auth']), candidate_execution: Type.Boolean(),
+  runner: Type.Optional(Type.Enum(['immutable_seed_only', 'isolated'])),
+  runner_available: Type.Optional(Type.Boolean()), runner_image: Type.Optional(Type.String({ maxLength: 256 })),
+});
 export const GenerationProgress = object({
   assessment_id: Id,
   status: Type.Enum(['queued', 'generating', 'validating', 'ready', 'failed']),
@@ -125,6 +129,7 @@ export const AssessmentState = object({
   expires_at: Type.String({ format: 'date-time' }), remaining_sec: Type.Integer({ minimum: 0, maximum: 3600 }),
   policy_todos: Type.Array(Type.String({ maxLength: 80 }), { maxItems: 5 }),
   runner: Type.Enum(['immutable_seed_only', 'isolated']),
+  runner_available: Type.Optional(Type.Boolean()), runner_image: Type.Optional(Type.String({ maxLength: 256 })),
   auto_submit_error: Type.Optional(Type.String({ maxLength: 80 })),
 });
 export const TaskFilesRequest = object({ files: Type.Array(File, { minItems: 1, maxItems: 20 }) });

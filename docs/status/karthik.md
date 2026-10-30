@@ -42,14 +42,13 @@ No test results are simulated. Development fixtures are labelled. No coverage pe
 
 ## Integration notes
 
-- Current task branch: `karthik/k3-k4-lite`, based on the published `karthik/k2-auth-db` changes. It contains the K1 documentation correction and is based on main through Pranav's merged report builder (PR #8). K1 PR #6 and intake/quiz/AIE PR #7 are in local history. Existing changes are preserved.
-- K2 adds database-backed registration/login/logout and protected current-user lookup. The ten seam signatures remain unchanged; teammate implementation folders remain untouched.
-- Auth is enabled only by explicit APP_MODE=auth and validated configuration. Candidate execution, generation, assessment routes and frontend end-to-end integration remain unavailable.
-- Empty-topic fallback is explicitly approved with a visible warning. Tier policy and Novice-only report scoring remain TODO(OPEN-Q1/Q4); checkpoint routes do not block on them.
+- Current branch: `karthik/k9-docker-wiring`, based on current origin/main. K1, K2, K3/K4-lite, Rithvik’s R2 and Pranav’s hardening are merged upstream.
+- Auth and checkpoint assessment routes are implemented. K9 selects the Docker runner for edited code, preserves the immutable local fallback, and reports runner availability explicitly. Existing ten seams remain unchanged.
+- Assessment state is in memory. Live generation, later-tier policies and full browser/demo deployment remain outside K9. R3 grading-trust limitations are documented, not certified away.
 
 ## Next
 
-Karthik has authorized and K2 has been pushed (PR #9). Publish the requested K3/K4-lite follow-up for Pranav’s review; do not merge. K5–K8 remain outside this scope.
+Publish verified K9 for team review; do not merge. Run the conditional Docker/image tests on the demo machine before claiming live K9 container integration.
 
 ## 2026-10-30 23:23 IST — K1 — verified skeleton ready for review
 
@@ -169,3 +168,13 @@ Finalize integrated tests, documentation audit, pre-push hook and PR to vudigapr
 - Pushed karthik/k3-k4-lite in three implementation commits: a9d3420 (contracts/shared identity), 982dbaf (checkpoint routes/store/tests), 0d8868f (server/OpenAPI wiring and handoff). PR: https://github.com/vudigapranav/HFT26-TEAM-36/pull/10 . Base: main after the team's K2 PR #9 merge. No merge by this agent.
 - Final post-rebase verification: typecheck/build passed; affected auth-boundary + assessment suites 12/12 passed; ownership and whitespace checks passed; actual original pre-push hook passed. Full 56 TS + 4 Python result and nine explicit PostgreSQL skips are recorded above. This entry changes documentation only.
 - Worktree was clean and branch synchronized after the implementation push. Prepared for teammate review, not a claim of full candidate/browser integration. Next: review PR #10, configure the frontend proxy, verify the real isolated-runner replacement and final demo database setup.
+
+## 2026-10-31 — K9 — Docker API wiring verification
+
+- Changed: API wiring selects Rithvik's runTestsInDocker for RUNNER=docker; local mode retains immutable runSeedTests. A bounded startup image inspection logs runner/image/availability and degrades health/state without blocking startup. Empty RUNNER_IMAGE consistently selects the default. Rithvik's runner source is unchanged.
+- Boundary: client files must match this task's editable paths exactly; trusted immutable files/tests/limits remain server-owned. Unavailable results return 503 SANDBOX_UNAVAILABLE and record no grade/run/submit event. Event hashes, visible details/hidden aggregates and discarded submit logs are preserved. Successful execution can restore availability.
+- Attack-review fixes: flow responses are checked with TypeBox Value.Check, huge.json now returns 200 with warnings under the portfolio-only 1 MiB cap; other routes retain 256 KiB. The huge-portfolio regression failed 413-vs-200 before the fix and passed afterward. Empty-image factory regression also failed before repair and passed afterward.
+- Config/docs: .gitattributes pins LF; scripts/owners.json adds that exact Karthik-owned path without weakening the hook. Added empty runner/model env placeholders and explicit TypeScript includes. Decisions/README document Docker demo mode/image build, recorded Rithvik model proposals and unchanged R3 limitations.
+- Actual checks: pnpm typecheck, pnpm test, pnpm build, ownership and diff checks passed. Full Vitest: 87 passed, 23 skipped (9 PostgreSQL + 14 Docker). Python reporter: 4 passed. PostgreSQL harness explicitly skips again in this sandbox; Docker CLI/image are unavailable. No live K9 Docker or new PostgreSQL integration verification is claimed. Use RUNNER=docker pnpm test on a Docker/image-equipped machine.
+- Reviews: fresh coverage/plan audits completed; all 23 static K9 plan items addressed. Security specialist found no new defects. API-contract review caught a test-probe empty-image mismatch; aligned it with the API default. Native adversarial reviewer reported no findings, with fixtures reviewed in summary mode. No external Claude review is claimed.
+- Shipping: current branch karthik/k9-docker-wiring; fetched/integrated latest origin/main through 997815c (teammate frontend docs only). No team modules changed. Tier/generation work remains outside K9. Publication and final docs audit pending at this entry; no merge authorized.

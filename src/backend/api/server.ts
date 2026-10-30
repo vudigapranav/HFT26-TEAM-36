@@ -1,3 +1,4 @@
+import { checkRunner } from './runner-status.js';
 import { buildApp } from './app.js';
 import { readConfig } from './config.js';
 import { createDevPorts } from './dev-stubs.js';
@@ -12,10 +13,12 @@ try {
   const config = readConfig();
   pool = config.mode === 'auth' ? createPool(config.database_url) : undefined;
   if (pool) await pool.query('SELECT user_id FROM auth_users LIMIT 0');
+  const runner = await checkRunner();
+  console.log(`Runner: ${runner.runner}${runner.image ? ` image=${runner.image}` : ''}; ${runner.available ? 'available' : 'unavailable'}`);
   const auth = pool && config.mode === 'auth' ? { pool, origin: config.auth_origin, secure: config.secure_cookies } : undefined;
   const seed = auth ? await loadSeed() : undefined;
-  const app = await buildApp({ ports: seed ? createWiredPorts(seed) : createDevPorts(), ...(auth && seed ? {
-    auth, assessment: { store: new AssessmentStore(), seed, origin: auth.origin,
+  const app = await buildApp({ runner, ports: seed ? createWiredPorts(seed) : createDevPorts(), ...(auth && seed ? {
+    auth, assessment: { store: new AssessmentStore(), seed, origin: auth.origin, runner_status: runner,
       authenticate: async request => (await readAuthUser(request, auth))?.user_id },
   } : {}) });
   if (pool) { const appPool = pool; app.addHook('onClose', async () => { await appPool.end(); }); }
@@ -23,7 +26,7 @@ try {
     void app.close().catch(() => { process.exitCode = 1; });
   });
   const address = await app.listen({ host: config.host, port: config.port });
-  console.log(`TorqueCode ${config.mode}: ${address}; candidate execution disabled`);
+  console.log(`TorqueCode ${config.mode}: ${address}; runner=${runner.runner}; available=${runner.available}`);
 } catch {
   if (pool) await pool.end();
   console.error('Backend failed to start; check configuration, migrations and local dependencies.');

@@ -8,13 +8,14 @@ import type { Ports } from '../contracts/seams.js';
 import { parsePortfolioDetailed } from '../intake/portfolio.js';
 import { hashEditableFiles } from '../scoring/aie.js';
 import { AssessmentStore, type AssessmentRecord } from './assessment-store.js';
+import type { RunnerStatus } from './runner-status.js';
 import { HttpProblem } from './errors.js';
 import { publicRun, publicTask } from './public-projections.js';
 
 export type AssessmentOptions = {
   store: AssessmentStore; seed: PrivateTask; origin: string;
   authenticate: (request: FastifyRequest) => Promise<string | undefined>;
-  now?: () => number; runner?: 'immutable_seed_only' | 'isolated';
+  now?: () => number; runner?: 'immutable_seed_only' | 'isolated'; runner_status?: RunnerStatus;
 };
 const empty = Type.Object({}, { additionalProperties: false });
 const ok = Type.Object({ ok: Type.Literal(true) }, { additionalProperties: false });
@@ -42,10 +43,13 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     record.events.push({ session_id: record.session.id, task_id: seed.task_id, ts: new Date(ts).toISOString(), type, source, payload });
   };
   function checkedFiles(record: AssessmentRecord, files: File[]): File[] {
-    if (files.length !== record.task.files.length || new Set(files.map(f => f.path)).size !== files.length) throw new HttpProblem(400, 'INVALID_FILES');
+    const editable = record.task.files.filter(file => file.editable);
+    if (files.length !== editable.length || new Set(files.map(f => f.path)).size !== files.length) throw new HttpProblem(400, 'INVALID_FILES');
+    if (files.some(file => !editable.some(expected => expected.path === file.path))) throw new HttpProblem(400, 'INVALID_FILES');
     return record.task.files.map(expected => {
+      if (!expected.editable) return { ...expected };
       const supplied = files.find(f => f.path === expected.path);
-      if (!supplied || !expected.editable || supplied.editable !== true) throw new HttpProblem(400, 'INVALID_FILES');
+      if (!supplied || supplied.editable !== true) throw new HttpProblem(400, 'INVALID_FILES');
       return { path: expected.path, content: supplied.content, editable: true };
     });
   }
@@ -57,11 +61,17 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     const files_hash = hashEditableFiles(files);
     executions++;
     const operation = (async () => {
-      const context = { signal: AbortSignal.any([closing.signal, AbortSignal.timeout(seed.limits.wall_time_ms + 1000)]) };
-      const result = real(await ports.runTests({ task_id: seed.task_id, files, tests: structuredClone(seed.tests), limits: { ...seed.limits }, mode }, context));
+      const context = { signal: AbortSignal.any([closing.signal, AbortSignal.timeout(record.task.limits.wall_time_ms + 1000)]) };
+      const outcome = await ports.runTests({ task_id: record.task.task_id, files, tests: structuredClone(record.task.tests), limits: { ...record.task.limits }, mode }, context);
+      if (outcome.kind === 'unavailable') {
+        if (options.runner_status?.runner === 'isolated') options.runner_status.available = false;
+        throw new HttpProblem(503, 'SANDBOX_UNAVAILABLE');
+      }
+      const result = real(outcome);
       // Validate identity/mode before associating a runner result with this user/session.
-      if (result.task_id !== seed.task_id || result.mode !== mode) throw new Error('Runner result mismatch');
+      if (result.task_id !== record.task.task_id || result.mode !== mode) throw new Error('Runner result mismatch');
       publicRun(result); // Reject run-mode hidden results before storing/returning.
+      if (options.runner_status?.runner === 'isolated') options.runner_status.available = true;
       record.runs.push(result);
       emit(record, mode, { run_id: result.run_id, files_hash }, ts);
       return result;
@@ -109,10 +119,12 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     current_tier: record.session.current_tier, status: record.session.status,
     started_at: record.session.started_at, expires_at: record.session.expires_at,
     remaining_sec: Math.max(0, Math.min(3600, Math.ceil((Date.parse(record.session.expires_at) - now()) / 1000))),
-    policy_todos: ['OPEN-Q1', 'OPEN-Q4'], runner: options.runner ?? 'immutable_seed_only',
+    policy_todos: ['OPEN-Q1', 'OPEN-Q4'], runner: options.runner_status?.runner ?? options.runner ?? 'immutable_seed_only',
+    runner_available: options.runner_status?.available ?? true,
+    ...(options.runner_status?.image ? { runner_image: options.runner_status.image } : {}),
     ...(record.auto_submit_error ? { auto_submit_error: record.auto_submit_error } : {}),
   });
-  app.post('/portfolio', { schema: { response: { 200: PortfolioResponse, ...errors } } }, async (request, reply) => {
+  app.post('/portfolio', { bodyLimit: 1_048_576, schema: { response: { 200: PortfolioResponse, ...errors } } }, async (request, reply) => {
     const parsed = parsePortfolioDetailed(request.body);
     if ('errors' in parsed) return reply.code(422).send({ error: { code: 'INVALID_PORTFOLIO', message: 'Invalid portfolio', request_id: request.id, fields: parsed.errors } });
     if (!store.profiles.has(user(request)) && store.profiles.size >= store.max_profiles) throw new HttpProblem(429, 'STORE_CAPACITY');

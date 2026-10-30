@@ -18,7 +18,7 @@ pnpm dev
 
 `GET http://127.0.0.1:3001/health` reports skeleton mode and disabled candidate execution. `pnpm openapi` prints OpenAPI JSON for implemented routes. Skeleton mode exposes health only; draft future paths are exported from `@torquecode/contracts/http`.
 
-No database or LLM key is needed. K1 binds only to loopback. PORT defaults to 3001. HOST defaults to 127.0.0.1. APP_MODE defaults to skeleton; other modes fail closed.
+Default skeleton mode needs no database or LLM key and exposes health only. APP_MODE=auth enables database-backed login and checkpoint assessment routes with explicit configuration below. Unsupported modes fail closed. PORT defaults to 3001 and HOST to loopback 127.0.0.1.
 
 Teammates implement `Ports` from `contracts/seams.ts`, reuse the package's public schemas, and replace their injected adapter in `api/` through Karthik. All asynchronous seams accept cancellation. Errors and development fixtures are explicit results. Generation/validation/scoring/report adapters cannot claim success before implementation.
 
@@ -103,3 +103,22 @@ chmod 700 .local/pgsocket
 ```
 
 Connect via a socket URL whose host query parameter is the absolute `.local/pgsocket` path, then run `pnpm db:migrate`. No TCP listener is enabled by these development commands. Never reuse an unknown cluster or commit its data. `.local/` is ignored. The current Codex sandbox cannot start PostgreSQL; the host terminal can. The final demo-machine setup and browser flow still need team verification.
+
+
+## Docker demo mode — K9
+
+```sh
+docker build -t torquecode-runner-python:dev src/backend/runner/images/python
+export RUNNER=docker
+export RUNNER_IMAGE=torquecode-runner-python:dev
+# Also configure APP_MODE=auth, DATABASE_URL and AUTH_ORIGIN as above.
+pnpm dev
+```
+
+Startup inspects the selected image once and logs availability. If Docker/image is unavailable the server still starts: `/health` is degraded with runner_available=false and assessment status reports the same capability. Run/Submit returns 503 SANDBOX_UNAVAILABLE without a grade/event; there is no local fallback. A successful later execution restores readiness. Restart after installing/building Docker to repeat the startup probe, or retry a run.
+
+Docker mode allows candidate edits only to exact editable task paths. The API rejects tests/config files, new paths and traversal before invoking the runner. Server-owned immutable files/tests/limits are preserved. The local mode still refuses arbitrary candidate edits. Submit logs and hidden test details never reach public responses.
+
+`POST /portfolio` accepts up to 1 MiB; intake applies its field caps and returns warnings that the frontend must display. Other routes keep the global 256 KiB body cap (auth uses its existing smaller cap).
+
+Run `pnpm typecheck && pnpm test`, and `RUNNER=docker pnpm test` with the image installed. Real Docker tests skip explicitly when Docker/image is missing. This does not certify R3 anti-forgery hardening: see Rithvik's status log and the backend decisions. The image was host-tested by Rithvik on Windows; actual demo-machine validation remains required.
