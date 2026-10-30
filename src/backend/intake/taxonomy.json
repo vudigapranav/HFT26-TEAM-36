@@ -1,0 +1,25 @@
+{
+  "_note": "Fixed DSA taxonomy from docs/TorqueCode_Context.md §11.1. Keys are the only canonical topic IDs. Match after normalizing the input: lowercase, trim, and replace runs of spaces, hyphens and underscores with a single space. Inputs with no exact synonym match are dropped with a warning, never guessed.",
+  "fallback_topics": ["arrays", "strings"],
+  "topics": {
+    "arrays": ["arrays", "array", "arr", "arraylist", "array list", "lists", "list", "matrix", "matrices", "2d arrays", "prefix sum", "prefix sums"],
+    "strings": ["strings", "string", "string manipulation", "string processing", "substrings", "substring", "palindromes"],
+    "hashing": ["hashing", "hash", "hashes", "hash map", "hash maps", "hashmap", "hashmaps", "hash table", "hash tables", "hashtable", "hashtables", "hash set", "hash sets", "hashset", "dictionary", "dictionaries", "dict", "maps", "map"],
+    "two_pointers": ["two pointers", "two pointer", "2 pointers", "2 pointer", "twopointers", "twopointer", "two pointer technique", "fast and slow pointers"],
+    "sliding_window": ["sliding window", "sliding windows", "slidingwindow", "window technique"],
+    "stack": ["stack", "stacks", "monotonic stack", "monotonic stacks"],
+    "queue": ["queue", "queues", "deque", "deques", "double ended queue", "circular queue"],
+    "binary_search": ["binary search", "binarysearch", "binary searching", "bisection", "bisect"],
+    "sorting": ["sorting", "sort", "sorts", "sorting algorithms", "merge sort", "quick sort", "quicksort", "mergesort"],
+    "recursion": ["recursion", "recursive", "recursions", "backtracking", "back tracking"],
+    "linked_list": ["linked list", "linked lists", "linkedlist", "linkedlists", "singly linked list", "doubly linked list"],
+    "trees": ["trees", "tree", "binary tree", "binary trees", "bst", "bsts", "binary search tree", "binary search trees", "tree traversal"],
+    "bfs_dfs": ["bfs dfs", "bfs", "dfs", "bfs and dfs", "dfs and bfs", "breadth first search", "depth first search", "breadth-first search", "depth-first search", "graph traversal"],
+    "graphs": ["graphs", "graph", "graph theory", "shortest path", "shortest paths", "dijkstra", "topological sort", "topo sort"],
+    "heap": ["heap", "heaps", "priority queue", "priority queues", "min heap", "max heap", "minheap", "maxheap", "heapq"],
+    "greedy": ["greedy", "greedy algorithms", "greedy algorithm", "greedy method"],
+    "dp": ["dp", "dynamic programming", "dynamic programing", "dynamic prog", "dyanmic programming", "memoization", "memoisation", "memo", "tabulation"],
+    "trie": ["trie", "tries", "prefix tree", "prefix trees"],
+    "union_find": ["union find", "unionfind", "union-find", "disjoint set", "disjoint sets", "disjoint set union", "dsu"]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "_note": "Deterministic domain rules (docs/TorqueCode_Context.md §10.1 A2). Build one set of distinct tokens from every projects[].tech_stack, the top-level tech_stack and skills, normalized to lowercase and trimmed. Each domain's score is the sum of weights of its keywords found in that set (each token counts once). Highest score wins; ties are broken by tie_break_order. Thresholds and fallback are data defaults, swappable without code changes.",
+  "thresholds": {
+    "low_confidence_below_score": 4,
+    "low_confidence_margin": 2
+  },
+  "fallback_domain": "backend",
+  "tie_break_order": ["web", "backend", "ml", "security"],
+  "domains": {
+    "web": {
+      "react": 3, "vue": 3, "angular": 3, "svelte": 3, "nextjs": 3, "next.js": 3,
+      "redux": 2, "html": 2, "css": 2, "tailwind": 2, "sass": 2,
+      "react-hooks": 2, "responsive-design": 2, "frontend": 2,
+      "javascript": 1, "typescript": 1, "express": 1, "vite": 1
+    },
+    "backend": {
+      "fastapi": 3, "spring": 3, "spring-boot": 3, "microservices": 3, "kafka": 3,
+      "express": 2, "django": 2, "flask": 2, "go": 2, "golang": 2,
+      "postgres": 2, "postgresql": 2, "mysql": 2, "redis": 2,
+      "rest-apis": 2, "graphql": 2, "caching": 2,
+      "node": 1, "nodejs": 1, "mongodb": 1, "sqlite": 1, "sql": 1, "docker": 1, "java": 1
+    },
+    "ml": {
+      "numpy": 3, "pandas": 3, "scikit-learn": 3, "sklearn": 3, "pytorch": 3, "tensorflow": 3, "keras": 3,
+      "machine-learning": 3, "deep-learning": 3, "ml": 3, "nlp": 3,
+      "jupyter": 2, "matplotlib": 2, "opencv": 2, "data-analysis": 2,
+      "python": 1
+    },
+    "security": {
+      "owasp": 3, "penetration-testing": 3, "pentesting": 3, "burp-suite": 3, "burpsuite": 3,
+      "wireshark": 3, "nmap": 3, "metasploit": 3, "cryptography": 3, "ctf": 3,
+      "sql-injection": 3, "reverse-engineering": 3,
+      "security": 2, "xss": 2,
+      "jwt": 1, "oauth": 1
+    }
+  }
+}
