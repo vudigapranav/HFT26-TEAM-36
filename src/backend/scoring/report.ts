@@ -8,7 +8,7 @@
 // full 100 (AIE_FALLBACK = 'scale_correctness').
 //
 // Question-set unlock rule (context §5, P11): a task is available only if its tier was reached, i.e. tier rank ≤ the
-// highest of session.current_tier and any tier named in tier_unlocked / tier_upgraded events ({ tier }). Tasks of
+// highest of session.current_tier and any tier named in tier_unlocked / tier_upgraded events ({ tier } or K10's { unlocks_used }). Tasks of
 // locked tiers get no row and don't affect correctness, focus areas or outcome.
 import type { AieScore, Report, Tier } from '@torquecode/contracts';
 import type { Event, InternalRunResult, PrivateTask, SeamResult, Session } from '../contracts/internal.js';
@@ -29,9 +29,9 @@ const isTier = (x: unknown): x is Tier => typeof x === 'string' && (TIER_ORDER a
 export function highestTierRank(session: Pick<Session, 'current_tier'>, events: Pick<Event, 'type' | 'payload'>[]): number {
   const fromEvents = events
     .filter(e => e.type === 'tier_unlocked' || e.type === 'tier_upgraded')
-    .map(e => e.payload.tier)
-    .filter(isTier)
-    .map(t => TIER_ORDER.indexOf(t));
+    .map(e => isTier(e.payload.tier) ? TIER_ORDER.indexOf(e.payload.tier)
+      // K10 logs { unlocks_used: 1|2 }: n unlocks means tier rank n was reached.
+      : typeof e.payload.unlocks_used === 'number' && Number.isInteger(e.payload.unlocks_used) ? Math.min(Math.max(e.payload.unlocks_used, 0), MAX_UNLOCKS) : -1);
   return Math.max(TIER_ORDER.indexOf(session.current_tier), ...fromEvents);
 }
 

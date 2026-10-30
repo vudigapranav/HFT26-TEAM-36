@@ -138,3 +138,15 @@ describe('buildReport — only available question sets count (P11)', () => {
   });
 });
 
+
+describe('buildReport — K10 unlock event payload', () => {
+  it('tier_upgraded { unlocks_used } counts as reaching that tier rank', async () => {
+    const { highestTierRank } = await import('../../scoring/report.js');
+    const ev = (type: Event['type'], payload: Record<string, unknown>) => ({ type, payload });
+    expect(highestTierRank({ current_tier: 'novice' }, [ev('tier_upgraded', { unlocks_used: 1 })])).toBe(1);
+    expect(highestTierRank({ current_tier: 'novice' }, [ev('tier_upgraded', { unlocks_used: 2 })])).toBe(2);
+    expect(highestTierRank({ current_tier: 'novice' }, [ev('tier_upgraded', { unlocks_used: 9 })])).toBe(2);
+    expect(highestTierRank({ current_tier: 'novice' }, [ev('tier_upgraded', { unlocks_used: 'x' })])).toBe(0);
+    expect(highestTierRank({ current_tier: 'adept' }, [ev('tier_unlocked', { tier: 'master' })])).toBe(2);
+  });
+});
