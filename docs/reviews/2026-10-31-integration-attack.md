@@ -27,3 +27,26 @@ never leak hidden or reference code; quiz answers to options that weren't offere
 - Timer expiry and auto-submit (needs a clock override in tests).
 - Tier unlock and upgrade abuse (K10): upgrading before unlock, double upgrades, hints in Novice.
 - Assistant jailbreak suite (R5): `src/backend/tests/fixtures/llm/jailbreaks.json`.
+
+## Update 01:00 — after K9 (Docker wiring) merged
+
+- Attack suite: **39 / 39** now (finding 3 fixed: `/portfolio` accepts large portfolios and caps them).
+- Full API journey: 17 / 17. Finding 2 addressed (flow tests now check responses against the contracts).
+
+### Finding 7 — HIGH — Docker daemon down ⇒ fake grade (Rithvik runner + Karthik API)
+Reproduced with `RUNNER=docker`, the docker CLI installed, and the **daemon not running** (Docker Desktop closed or crashed):
+- `/health` correctly reports `runner_available: false`, **but** `POST .../run` with edited code still returns **200**
+  with every visible test `"error"`, `passed: 0`. A run event is logged and the AI score and report treat it as a real attempt.
+- `stderr` returned to the candidate contains the host's docker socket path.
+- Cause: newer docker CLIs exit with **1** (not 125) when they can't reach the daemon. `dockerRunner.ts` only maps
+  125/126/127 to `SANDBOX_UNAVAILABLE`, so the failure falls through to grading.
+
+**Fix (Rithvik, `runner/dockerRunner.ts`):** before grading, treat "no results file **and** the container never
+started" as `unavailable`. Simplest: a cached (≈10 s) preflight `docker version --format '{{.Server.Version}}'`; on
+failure return `SANDBOX_UNAVAILABLE`. Also map exit code 1 + empty `/out` + stderr matching
+`/docker daemon|docker API|docker.sock/i` to unavailable. Never pass docker's own stderr to the candidate.
+Regression test: point `DOCKER_HOST` at a non-existent socket ⇒ result `kind: 'unavailable'`.
+
+**Fix (Karthik, `api/assessments.ts`):** if the runner status says unavailable, return **503 before calling the
+runner**, and never log a run/submit event for a 503. Re-check readiness every ~10 s instead of only at startup,
+so a Docker Desktop crash mid-demo becomes a clear 503, not a zero score.
