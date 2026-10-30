@@ -162,3 +162,10 @@ Finalize integrated tests, documentation audit, pre-push hook and PR to vudigapr
 - Handoff: frontend /api proxy must strip /api and preserve Origin; AUTH_ORIGIN is the frontend dev origin. Cookies HttpOnly + SameSite=Lax. Empty topics fallback arrays/strings WITH displayed warning is explicitly approved. TODO(OPEN-Q1/Q4) remains visible and does not block this checkpoint. Homebrew PostgreSQL 16 is the prepared option on the host-tested Mac; actual demo-machine choice/teammate confirmation is not fabricated.
 - Git: K2 merge edeb1fb is now visible in fetched origin/main, performed by the team, not this agent. Follow-up uses small commits on karthik/k3-k4-lite and will be pushed for Pranav’s assistant to review/merge. No automatic merge. Teammate implementation paths are unchanged.
 - Next: team review/pull, configure frontend proxy and swap api/wiring.ts runTests to Rithvik’s isolated implementation once merged. Do not claim full K3/K4 or an end-to-end candidate sandbox until those dependencies/policies are verified.
+
+
+## 2026-10-31 — K3/K4-lite — published for team review
+
+- Pushed karthik/k3-k4-lite in three implementation commits: a9d3420 (contracts/shared identity), 982dbaf (checkpoint routes/store/tests), 0d8868f (server/OpenAPI wiring and handoff). PR: https://github.com/vudigapranav/HFT26-TEAM-36/pull/10 . Base: main after the team's K2 PR #9 merge. No merge by this agent.
+- Final post-rebase verification: typecheck/build passed; affected auth-boundary + assessment suites 12/12 passed; ownership and whitespace checks passed; actual original pre-push hook passed. Full 56 TS + 4 Python result and nine explicit PostgreSQL skips are recorded above. This entry changes documentation only.
+- Worktree was clean and branch synchronized after the implementation push. Prepared for teammate review, not a claim of full candidate/browser integration. Next: review PR #10, configure the frontend proxy, verify the real isolated-runner replacement and final demo database setup.
