@@ -1,0 +1,5 @@
+[
+  "Check both the size reported for a tiny span and the work repeated as a large span grows.",
+  "Trace the half-open boundaries in the report and the repeated scans in the window module.",
+  "Use the distance between half-open boundaries for length and maintain code frequencies as the window moves."
+]

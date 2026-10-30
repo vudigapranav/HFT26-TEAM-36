@@ -1,0 +1,35 @@
+{
+  "task_id": "seed-master-session-window",
+  "tier": "master",
+  "domain": "backend",
+  "language": "python",
+  "task_type": "bug_fix",
+  "title": "Repair request-session window correctness and throughput",
+  "statement_md": "# Request-session window report\n\nAn operations service looks for the longest consecutive stretch of requests containing\nat most K distinct error codes. Two regressions were introduced: the report length\nis incorrect, and large batches are much too slow. Repair both without changing APIs.\nOnly `app/window.py` and `app/report.py` are editable. `app/parser.py` is trusted,\nworking support code and must remain unchanged.\n\nEach nonblank input line is `request_id|error_code`. Whitespace is stripped, blank\nlines are ignored, and malformed records raise ValueError. Error codes are nonempty,\ncase-sensitive strings; repeated request IDs do not deduplicate records. K is an\ninteger >= 0. Negative K raises ValueError. Up to 200000 parsed records are assessed.\n\n`longest_window(codes, k)` returns (start, end_exclusive) in the PARSED record array.\nChoose the longest contiguous span with at most k distinct codes; if lengths tie,\nchoose the earliest start. No eligible span (including k=0) returns (0, 0).\n`build_report(lines, k)` returns {\"start\": start, \"end_exclusive\": end, \"length\": end-start}.\nPreserve parsing, tie-breaking and empty-input behavior. Do not mutate input.\nUse an O(n) sliding window with hashing for code frequencies; do not repeatedly scan\nor copy a growing window. An assessed 200000-record window call must finish in <2s;\nthe whole task has a 10-second wall-clock limit. Only standard-library code is allowed.\n\nExample 1:\nInput: lines=[\"r1|A\", \"r2|B\", \"r3|A\", \"r4|C\", \"r5|C\"], k=2\nOutput: {\"start\": 0, \"end_exclusive\": 3, \"length\": 3}\nThe later span [A,C,C] ties in length, so the earlier span [A,B,A] wins.\n\nExample 2:\nInput: lines=[\"r1|A\", \"r2|B\", \"r3|C\", \"r4|C\", \"r5|B\", \"r6|B\", \"r7|A\"], k=2\nOutput: {\"start\": 1, \"end_exclusive\": 6, \"length\": 5}\n",
+  "dsa_topics": [
+    "arrays",
+    "sliding_window"
+  ],
+  "source": "seed_bank",
+  "limits": {
+    "wall_time_ms": 10000,
+    "memory_mb": 128,
+    "cpu_count": 1,
+    "pids": 32,
+    "output_bytes": 65536
+  },
+  "f2p_ids": [
+    "tests/test_visible.py::test_report_for_mixed_requests",
+    "tests/test_visible.py::test_single_request_report",
+    "tests/test_hidden.py::test_report_with_shrinking_and_long_tail",
+    "tests/test_hidden.py::test_reports_match_small_bruteforce_oracle",
+    "tests/test_hidden.py::test_large_window_performance"
+  ],
+  "p2p_ids": [
+    "tests/test_visible.py::test_window_returns_earliest_tie",
+    "tests/test_visible.py::test_parser_preserves_records",
+    "tests/test_hidden.py::test_empty_zero_budget_and_invalid_budget",
+    "tests/test_hidden.py::test_parser_rejects_malformed_records",
+    "tests/test_hidden.py::test_parser_ignores_blank_lines_and_strips_fields"
+  ]
+}

@@ -1,0 +1,5 @@
+[
+  "A retried delivery should not increase the number of unique events.",
+  "Check how the store selects a delivery, then how the service counts its owner.",
+  "Use event IDs as hash keys, retain the earliest timestamp, and count the retained owners."
+]

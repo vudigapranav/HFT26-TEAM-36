@@ -1,0 +1,35 @@
+{
+  "task_id": "seed-adept-event-dedupe",
+  "tier": "adept",
+  "domain": "backend",
+  "language": "python",
+  "task_type": "feature",
+  "title": "Deduplicate event deliveries and summarize owners",
+  "statement_md": "# Event ingestion: count unique deliveries\n\nAn ingestion service receives retries and out-of-order deliveries. Implement the missing\ndeduplication-and-summary feature across `app/store.py` and `app/service.py`.\nOnly these two files are editable. `app/models.py` defines the existing immutable\n`Event(user_id, event_id, ts)` model and must remain unchanged.\n\nInputs are a list of valid Event objects: user_id/event_id are nonempty case-sensitive\nstrings, and ts is a nonnegative integer timestamp. IDs are GLOBAL across users.\nFor each event_id, retain the event with the smallest ts. On equal timestamps, retain\nthe first occurrence in the input; its user owns that event for counting purposes.\n\nImplement EventStore.deduplicated(): return retained Event objects in first-seen\nevent-ID order (replacing a winner must not move its ID). Implement summarize_events():\nreturn a list of {\"user_id\": str, \"count\": int} dictionaries for retained-event owners,\nordered lexicographically by user_id. Omit users with no retained events. Empty input\nreturns an empty list. Do not mutate input or change existing snapshot/model behavior.\nUse arrays/lists and hashing (dicts/sets); only sorted() on dictionary keys is needed.\n\nExample 1 (summarize_events):\nInput: [Event(\"bob\", \"b1\", 5), Event(\"amy\", \"a1\", 8), Event(\"bob\", \"b1\", 3), Event(\"amy\", \"a2\", 9)]\nOutput: [{\"user_id\": \"amy\", \"count\": 2}, {\"user_id\": \"bob\", \"count\": 1}]\n\nExample 2 (summarize_events):\nInput: [Event(\"z\", \"shared\", 10), Event(\"a\", \"shared\", 2), Event(\"b\", \"shared\", 2), Event(\"b\", \"other\", 1)]\nOutput: [{\"user_id\": \"a\", \"count\": 1}, {\"user_id\": \"b\", \"count\": 1}]\n",
+  "dsa_topics": [
+    "arrays",
+    "hashing"
+  ],
+  "source": "seed_bank",
+  "limits": {
+    "wall_time_ms": 5000,
+    "memory_mb": 128,
+    "cpu_count": 1,
+    "pids": 32,
+    "output_bytes": 65536
+  },
+  "f2p_ids": [
+    "tests/test_visible.py::test_counts_are_sorted_and_deduplicated",
+    "tests/test_visible.py::test_store_keeps_earliest_timestamp",
+    "tests/test_hidden.py::test_empty_batch",
+    "tests/test_hidden.py::test_one_user_many_retries",
+    "tests/test_hidden.py::test_global_ids_and_first_wins_timestamp_ties",
+    "tests/test_hidden.py::test_many_users_and_input_is_unchanged",
+    "tests/test_hidden.py::test_case_sensitive_ids_and_first_seen_order"
+  ],
+  "p2p_ids": [
+    "tests/test_visible.py::test_model_preserves_fields",
+    "tests/test_visible.py::test_snapshot_is_independent",
+    "tests/test_hidden.py::test_model_value_equality"
+  ]
+}
