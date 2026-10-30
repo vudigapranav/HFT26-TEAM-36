@@ -512,7 +512,7 @@ Design rules:
 1. **H_max and weights.** `H_max = 6`, exported as the named constant `AIE_H_MAX`. Weights: hint level 1 = 1, level 2 = 2, level 3 = 3, assistant message = 1.
 2. **HintYield window.** For each AI interaction, the window runs from the interaction's timestamp until whichever comes **first**: 3 runs or 10 minutes. Gain = (best visible pass rate among runs in the window) − (visible pass rate of the last run **before** the interaction; 0 if there was none), clipped to [0, 1]. No run in the window → that interaction's yield = 0. HintYield = mean over all AI interactions; = 1 if there were none.
 3. **TestDiscipline.** = (runs that followed a real code change) ÷ (all runs). Submits are **not** runs. If there was no run before the first submit, TestDiscipline = 0 (this component only, not the whole score). Zero runs → 0.
-4. **Real code change.** The sha256 of the editable files' contents (sorted by path, line endings normalized to LF) differs from the previous run's hash. Whitespace-only edits count as changes.
+4. **Real code change.** The sha256 of the editable files' contents (sorted by path, line endings normalized to LF) differs from the previous run's hash. Whitespace-only edits count as changes. For the **first** run, the "previous" hash is the hash of the untouched starter files, so running the starter code unchanged does **not** count as a code change.
 5. **What counts as AI use, and the gate.** Each assistant message is an AI interaction (weight 1) in both Independence and HintYield. Blocked extraction attempts weigh 0 in the score but are reported as integrity flags. `gate` uses the **final submit's** pass rate over **all** tests (visible + hidden); no submit → `gate = 0`.
 
 ---
