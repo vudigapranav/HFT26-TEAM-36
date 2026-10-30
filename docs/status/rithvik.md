@@ -450,3 +450,24 @@ Base: origin/main `a32c5cb` (K5 PR 44 and admission PR 49 merged). Branch `rithv
   - Mutation search costs up to 12 R3 runs per attempt.
   - The quality of the statement and hint wording rests on the prompt plus K5's leakage gate, and isn't reviewed by a human before release.
   - Generated tasks inherit R3's limits: hidden-test inputs are visible to the candidate's function.
+
+### K6 review corrections (2026-10-31, after Rithvik's review of PR 54)
+- **Manual inspection of real generated tasks.** `GEN_SMOKE_DUMP=<file outside the repo>` (new in `generation/smoke.ts`; refuses paths inside the repo) dumps the full tasks. I read the statement, reference, starter diff, visible and hidden cases, hints and F2P/P2P.
+  - **Run 3 (prompt v1): 2 real problems that K5 accepted.**
+    1. Novice "Find Duplicate File IDs": the statement says return **"any"** duplicate, but hidden test `find_duplicate_id([1, 1, 2, 2]) == 1` expects one specific one. A correct "any duplicate" solution returning 2 fails it, so the statement and tests contradict each other.
+    2. Both tasks' **hints** were model-written for "write the function from scratch" ("use a set", "case sensitivity"), not for the injected bug (the loop skips the last element). The model writes hints before the bug exists.
+    - Also: Adept "Web Form Validation" is solvable, and hidden `["test@domain.", "@domain.com"] == True` follows the literal stated rule but is a gotcha. Adept was no harder than Novice.
+  - **Fixes (K6 only):**
+    1. Hints are now **derived from the injected mutation** (`bugHints(kind, func)`): three Socratic hints with no code, still checked by K5's leakage gate. The model no longer supplies hints.
+    2. Prompt **`task-v2`** (`task-v1` kept for history): the statement must define exactly one correct output for every input, with "the first / the smallest …", never "any …". There's a stronger Adept guide and no hints field.
+  - **Run 4 (prompt v2), inspected by hand:**
+    - Novice "Find the Smallest Missing Positive Integer": the statement is unambiguous. I traced the reference against all 11 cases and every expected value is correct. The starter `for num in nums[:-1]` fails 3 visible tests. Coherent and solvable.
+    - Adept "Find the Most Frequent Even Element": ties are defined ("smallest"). I traced the reference's tie logic on orders the tests don't cover (`[4, 4, 2, 2]`, `[2, 4, 4, 2]`) and both give 2. The starter fails visible `[2, 2, 4, 4, 4]`. Coherent and solvable.
+    - Hints point at the loop. Both receipts are valid on all 10 gates. 3 calls; 7.6–9.5 s; 1,969 + 1,457 tokens; **$0.0009**; 31.6 s total.
+  - **Still weak, recorded rather than fixed:**
+    - The model ignored the harder-Adept guidance, so tier difficulty isn't enforced by anything deterministic.
+    - Both bugs were the same slice off-by-one, the first mutation rule that worked, so there's little variety.
+    - A statement/test contradiction like run 3's can still happen. Nothing deterministic checks the prose against the tests; the prompt rule only makes it less likely.
+- **What K5's gates do and don't prove.** `differential: pass` currently means **the reference gives identical results across its 3 runs** (determinism). It is **not** an independent semantic check: there's no brute-force oracle compared against the reference. `examples: pass` means the visible tests match the manifest, not that the statement's prose example was run. So **"valid on all 10 gates" means "structurally sound, the reference passes its own computed tests, the starter fails as declared, no leaks". It is not proof of a correct, unambiguous natural-language problem.** Since the tests are computed from the reference, a wrong reference gives consistent but wrong tests, and only review or an independent oracle would catch that.
+- **Not live in the assessment API.** `generateAssessment` isn't wired. `api/wiring.ts` and `api/dev-stubs.ts` still use the stub that returns `unavailable`. Karthik's K11 has to run it as a background job (the call is in the K6 entry above), map `progress` to the real `assessment_id`, and pass the cancel signal. Until then, assessments use seed tasks only.
+- Tests: `tests/generation` **50 passed** (8 new bug-hint tests; the generated task's `hint_ladder` equals `bugHints('off_by_one_range', 'busiest_hour')`, and it passes the real K5 validator, leakage gate included). `pnpm typecheck` OK.

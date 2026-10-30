@@ -2,7 +2,7 @@
 // released ONLY when Karthik's deterministic K5 validator (Ports.validateTask) says valid.
 //
 // Trust model:
-// - The model proposes data: title/statement/topics/hints, input cases and reference files.
+// - The model proposes data: title/statement/topics, input cases and reference files.
 //   It never writes test code and never supplies expected outputs.
 // - Expected outputs come from RUNNING the reference in R3 (trusted probe, grader side).
 // - Test files come from a fixed trusted template (template.ts); the starter from a
@@ -18,12 +18,12 @@ import { mutations } from './mutate.js';
 import { parseProposal, type Proposal } from './spec.js';
 import { parseProbe, renderProbe, renderTests, type Outcome } from './template.js';
 
-export const PROMPT_VERSION = 'task-v1';
+export const PROMPT_VERSION = 'task-v2';
 const LIMITS: Limits = { wall_time_ms: 5000, memory_mb: 128, cpu_count: 1, pids: 32, output_bytes: 65536 };
 const PROBE_LIMITS: Limits = { ...LIMITS, output_bytes: 1_048_576 };
 const TIER_GUIDE: Record<Exclude<Tier, 'master'>, string> = {
   novice: 'easy. One file, one function of 5-15 lines, one loop.',
-  adept: 'medium. The entrypoint may use one helper function or a second small file; 15-35 lines in total.',
+  adept: 'medium, clearly harder than an easy single-loop task: the entrypoint combines two steps (e.g. normalise then aggregate) using a helper function or a second small file; 15-35 lines in total.',
 };
 
 export type GenerationLog = Record<string, string | number | boolean>;
@@ -56,6 +56,27 @@ function untrusted(profile: CandidateProfile, nonce: string): string {
   const clean = (value: string) => value.replace(/<\/?UNTRUSTED[^>]*>/gi, '').replace(/[<>]/g, ' ').slice(0, 100);
   return [`tech_stack: ${profile.tech_stack.slice(0, 30).map(clean).join(', ')}`, `skills: ${profile.skills.slice(0, 30).map(clean).join(', ')}`]
     .join('\n').replaceAll(nonce, 'x');
+}
+
+/**
+ * Hint ladder derived from the bug that was actually injected (live review: model-written hints
+ * described writing the function from scratch, not the bug). Socratic, no code, so they can't
+ * leak the fix; K5's leakage gate still checks them.
+ */
+export function bugHints(kind: string, func: string): [string, string, string] {
+  const first = 'Run the visible tests and study the input of the one that fails. What is special about it compared with the passing ones?';
+  const ladders: Record<string, [string, string]> = {
+    off_by_one_range: [`Trace \`${func}\` by hand on that failing input. Which elements does the loop actually visit?`, 'Compare where the loop stops with the positions it has to cover. Every element must be considered.'],
+    off_by_one_range_start: [`Trace \`${func}\` by hand on that failing input. Which positions does the loop visit?`, 'Compare the first and last positions the loop covers with the ones it should cover.'],
+    off_by_one_iteration: [`Trace \`${func}\` by hand on that failing input. Which elements does the loop actually visit?`, 'Check whether the loop really goes over every element of the input, including the last one.'],
+    flipped_comparison: [`Find the comparisons in \`${func}\`. What happens when the two values are equal?`, 'For each comparison, decide from the statement whether equality should count or not.'],
+    swapped_extreme: [`Which value does \`${func}\` keep at each step, and is it the one the statement asks for?`, 'Check whether each step keeps the larger or the smaller value, and which one the result needs.'],
+    flipped_condition: [`Look at how the conditions in \`${func}\` are combined. Which inputs take which branch?`, 'Decide from the statement whether both conditions must hold, or either one is enough.'],
+    off_by_one_index: [`Which element does \`${func}\` read near the end of the input?`, 'Check that every index points at the element the statement describes.'],
+    off_by_one_constant: [`Look for arithmetic in \`${func}\` that adjusts a count or a position.`, 'Check whether that adjustment matches the statement, for the smallest inputs too.'],
+  };
+  const [second, third] = ladders[kind] ?? [`Trace \`${func}\` by hand on that failing input, line by line.`, 'Compare what each line does with what the statement requires.'];
+  return [first, second, third];
 }
 
 export function createGenerator(deps: GeneratorDeps): Ports['generateAssessment'] {
@@ -98,7 +119,7 @@ export function createGenerator(deps: GeneratorDeps): Ports['generateAssessment'
     const visibleIds = new Set(tests[0]!.ids);
 
     // 3. Deterministic starter: the first one-line mutation that fails visibly and still passes something.
-    let starter: { files: PrivateTask['files']; f2p: string[]; p2p: string[] } | null = null;
+    let starter: { files: PrivateTask['files']; f2p: string[]; p2p: string[]; kind: string } | null = null;
     for (const mutation of mutations(reference.find(f => f.path === proposal.entryPath)!.content, proposal.func)) {
       context.signal.throwIfAborted();
       const files = reference.map(f => (f.path === proposal.entryPath ? { ...f, content: mutation.content } : f));
@@ -111,7 +132,7 @@ export function createGenerator(deps: GeneratorDeps): Ports['generateAssessment'
       if (result.value.timed_out || allIds.some(id => !['pass', 'fail'].includes(statuses.get(id) ?? ''))) continue;
       const f2p = allIds.filter(id => statuses.get(id) === 'fail');
       const p2p = allIds.filter(id => statuses.get(id) === 'pass');
-      if (f2p.some(id => visibleIds.has(id)) && p2p.length > 0) { starter = { files, f2p, p2p }; break; }
+      if (f2p.some(id => visibleIds.has(id)) && p2p.length > 0) { starter = { files, f2p, p2p, kind: mutation.kind }; break; }
     }
     if (!starter) return { retry: 'no single-line bug in the entrypoint makes a visible test fail; use a loop bound or comparison the tests depend on' };
 
@@ -120,7 +141,7 @@ export function createGenerator(deps: GeneratorDeps): Ports['generateAssessment'
       task_id: taskId, tier, domain, language: 'python', task_type: 'bug_fix', title: proposal.title,
       statement_md: proposal.statement_md, dsa_topics: proposal.dsa_topics.filter(t => claimed.includes(t)),
       files: starter.files, visible_tests: visible.ids.map(id => ({ id, path: visible.path, content: visible.content })),
-      source: 'generated', reference_files: reference, tests, hint_ladder: [...proposal.hints], limits: LIMITS,
+      source: 'generated', reference_files: reference, tests, hint_ladder: bugHints(starter.kind, proposal.func), limits: LIMITS,
       f2p_ids: starter.f2p, p2p_ids: starter.p2p,
     };
 

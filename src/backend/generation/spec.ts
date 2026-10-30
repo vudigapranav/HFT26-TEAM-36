@@ -1,12 +1,12 @@
 // Defensive parsing of the model's task proposal (K6). Everything here is untrusted:
-// the model proposes a header (title, statement, topics, entrypoint, hints, input cases)
+// the model proposes a header (title, statement, topics, entrypoint, input cases)
 // and reference files. It never supplies test code or expected outputs.
 import type { File, Topic } from '../contracts/internal.js';
 
 export type Case = { args: unknown[]; kwargs: Record<string, unknown>; visibility: 'visible' | 'hidden' };
 export type Proposal = {
   title: string; statement_md: string; dsa_topics: Topic[]; module: string; func: string; entryPath: string;
-  hints: [string, string, string]; cases: Case[]; files: File[];
+  cases: Case[]; files: File[];
 };
 export type ParseResult = { ok: true; value: Proposal } | { ok: false; reason: string };
 
@@ -35,15 +35,13 @@ export function parseProposal(text: string, claimed: Topic[]): ParseResult {
   try { data = JSON.parse(header[1]!); } catch { return { ok: false, reason: 'task header is not valid JSON' }; }
   if (!isRecord(data)) return { ok: false, reason: 'task header is not an object' };
 
-  const { title, statement_md, dsa_topics, entrypoint, hints, cases } = data;
+  const { title, statement_md, dsa_topics, entrypoint, cases } = data;
   if (typeof title !== 'string' || title.trim().length < 3 || title.length > 120) return { ok: false, reason: 'bad title' };
   if (typeof statement_md !== 'string' || statement_md.trim().length < 20 || statement_md.length > 2000) return { ok: false, reason: 'bad statement' };
   if (!Array.isArray(dsa_topics) || dsa_topics.length === 0 || !dsa_topics.every(t => typeof t === 'string')) return { ok: false, reason: 'bad dsa_topics' };
   const topics = [...new Set(dsa_topics as string[])];
   if (!topics.every(t => (claimed as string[]).includes(t))) return { ok: false, reason: 'dsa_topics outside the claimed topics' };
-  if (!Array.isArray(hints) || hints.length !== 3 || !hints.every(h => typeof h === 'string' && h.trim().length > 0 && h.length <= 500)) {
-    return { ok: false, reason: 'expected exactly 3 hints' };
-  }
+  // Hints are NOT taken from the model: they're derived from the injected bug (generate.ts).
   if (typeof entrypoint !== 'string') return { ok: false, reason: 'missing entrypoint' };
   const [entryPath, func, extra] = entrypoint.split(':');
   if (extra !== undefined || !entryPath || !func || !PATH.test(entryPath) || !IDENT.test(func) || func.startsWith('_')) {
@@ -83,6 +81,6 @@ export function parseProposal(text: string, claimed: Topic[]): ParseResult {
   const module = entryPath.slice(0, -3).replaceAll('/', '.');
   return { ok: true, value: {
     title: title.trim(), statement_md: statement_md.trim(), dsa_topics: topics as Topic[], module, func, entryPath,
-    hints: [hints[0]!.trim(), hints[1]!.trim(), hints[2]!.trim()], cases: parsedCases, files,
+    cases: parsedCases, files,
   } };
 }

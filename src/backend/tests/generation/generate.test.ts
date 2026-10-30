@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import type { CandidateProfile, ChatRequest, FocusLane, GenerationProgress, PrivateTask, SeamResult, Tier, ValidationReceipt } from '../../contracts/internal.js';
 import type { Ports } from '../../contracts/seams.js';
 import { loadSeedBank } from '../../api/seed-bank.js';
-import { createGenerator, type GeneratorDeps } from '../../generation/generate.js';
+import { bugHints, createGenerator, type GeneratorDeps } from '../../generation/generate.js';
+import { checkOutput, STANDARD_POLICY } from '../../llm/guards.js';
 import { mutations } from '../../generation/mutate.js';
 import { parseProposal } from '../../generation/spec.js';
 import { pyLiteral } from '../../generation/template.js';
@@ -71,7 +72,6 @@ describe('parsing the model proposal (untrusted)', () => {
     ['private entrypoint', proposal({ entrypoint: 'app/traffic.py:_helper' })],
     ['too few hidden cases', proposal({ cases: Array.from({ length: 6 }, () => ({ args: [[1]], visibility: 'visible' })) })],
     ['non-plain case value', proposal({ cases: [{ args: [{ __proto__: 1 }], visibility: 'visible' }] }).replace('"__proto__":1', '"x":1e999')],
-    ['two hints', proposal({ hints: ['a', 'b'] })],
     ['missing reference file', `<task>\n${header()}\n</task>\n`],
   ])('rejects %s', (_name, text) => {
     expect(parseProposal(text, ['arrays']).ok).toBe(false);
@@ -101,6 +101,17 @@ describe('trusted template pieces', () => {
     expect(mutations(direct, 'peak').map(m => m.kind)).toEqual(['off_by_one_iteration', 'swapped_extreme']);
     expect(mutations(direct, 'peak')[0]!.content).toContain('for count in counts[:-1]:');
   });
+});
+
+describe('bug-derived hint ladder', () => {
+  it.each(['off_by_one_range', 'off_by_one_iteration', 'flipped_comparison', 'swapped_extreme', 'flipped_condition', 'off_by_one_index', 'off_by_one_constant', 'unknown'])(
+    '%s: three Socratic hints, no code, pass the leakage guard', kind => {
+      const hints = bugHints(kind, 'busiest_hour');
+      expect(hints).toHaveLength(3);
+      const starter = { path: 'app/traffic.py', content: REFERENCE.replace('range(len(counts))', 'range(len(counts) - 1)'), editable: true };
+      for (const hint of hints) expect(checkOutput(hint, { files: [starter], fingerprint: null, policy: STANDARD_POLICY })).toEqual({ ok: true });
+      expect(hints.join(' ')).not.toMatch(/range\(|\[:-1\]|<=|>=/);
+    });
 });
 
 describe('generator control flow (mocked chat, no runner)', () => {
@@ -177,6 +188,8 @@ describe.skipIf(!dockerReady)('generation through the real R3 runner (chat mocke
     expect(task.f2p_ids).toContain('tests/test_visible.py::test_visible_1');
     expect(task.p2p_ids.length).toBeGreaterThan(0);
     expect(task.visible_tests.every(v => v.path === 'tests/test_visible.py')).toBe(true);
+    // Hints come from the injected bug, not from the model's "hints" field.
+    expect(task.hint_ladder).toEqual(bugHints('off_by_one_range', 'busiest_hour'));
     expect(result.value.master.source).toBe('seed_bank');
   }, 180_000);
 

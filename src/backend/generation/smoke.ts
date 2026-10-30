@@ -2,7 +2,8 @@
 //   pnpm gen:smoke    one real generateAssessment for tests/fixtures/portfolios/normal-web.json
 // Real model (shared R4 client), real R3 runner, real K5 validator. Capped by LLM_EVAL_CAP_USD
 // (default 0.20). Prints metadata and gate outcomes only, never the reference or hidden tests.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import type { CandidateProfile, ChatRequest, Context, ValidationReceipt } from '../contracts/internal.js';
 import type { Ports } from '../contracts/seams.js';
 import { loadSeedBank } from '../api/seed-bank.js';
@@ -50,6 +51,14 @@ async function main() {
     total_ms: Math.round(performance.now() - started),
   };
   console.log(JSON.stringify({ summary }, null, 2));
+  // Manual review: GEN_SMOKE_DUMP=<file outside the repo> writes the FULL generated tasks
+  // (reference, hidden tests, hints included). Never commit that file.
+  const dump = process.env.GEN_SMOKE_DUMP;
+  if (dump && result.kind === 'ok') {
+    if (resolvePath(dump).startsWith(resolvePath('../..'))) throw new Error('GEN_SMOKE_DUMP must be outside the repository');
+    writeFileSync(dump, JSON.stringify(Object.values(result.value).filter(task => task.source === 'generated'), null, 2));
+    console.log(`full generated tasks written to ${dump}`);
+  }
 }
 
 if (process.argv[1]?.endsWith('smoke.ts')) await main();
