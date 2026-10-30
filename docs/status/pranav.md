@@ -152,3 +152,14 @@ Newest entries at the bottom. Written by `/ship`.
 - **Not yet verified live:** set 2/3 submits, unlock 2, the report checks and the report list. They need the Docker runner. **Rithvik**, after deploy/start.sh on the demo machine, run `python3 scripts/e2e-journey.py`; it should end "Journey PASSED". For the cloud check: `BASE=https://<app>/api ORIGIN=https://<app> python3 scripts/e2e-journey.py`.
 - Seams/contracts affected: none
 - Next: P16 docs refresh.
+## 2026-10-31 05:25 — P16 — docs refresh after K10 + K5
+- Changed: README.md, docs/demo/PITCH_FACTS.md, docs/demo/DEMO_SCRIPT.md. Docs only.
+- README "What's real today" (checked at 19df7ff): K10 question sets + unlock rule + hints/assistant on later sets (#42), K5 validation engine (#44, wired as the validateTask seam), K7 seeds checked on Docker (R7), R3, R5-live, R6 one-command deploy (verified on Windows, not yet the demo Mac). In progress: K11 persistence, K6 generation, R6b cloud, frontend. "How to run the demo" → deploy/start.sh + verify.sh.
+- PITCH_FACTS:
+  - My own run on 19df7ff: typecheck clean; pnpm test 275 passed / 55 skipped + 9 Python.
+  - New section 8 lists the K5 gates exactly as in validate.ts (schema, topics via Python AST, imports, format, leakage, reference ×3, starter F2P/P2P, Master performance; Docker down → skipped → invalid). Caveat: "examples" currently passes after the schema check, and "differential" only checks the 3 reference runs agree, with no brute-force comparison yet. Karthik's K5 follow-up makes both stricter.
+  - Added R7 (4/0, f168c2b) and R6 (31/31 on Windows, 00e01b5) as "reported".
+- DEMO_SCRIPT: unlock, second set + assistant and report steps marked ✅ on main (K10, P11). Cut lines kept: no key or not rehearsed → describe the assistant from the slide; first set only → Q4 scaling. Pre-stage checklist uses deploy/start.sh + verify.sh and the P15 journey. The dependency table is updated.
+- Note: P14 (#47) and P15 (#48) are still open, so their results aren't cited as merged facts.
+- Seams/contracts affected: none
+- Next: P13 when Report.claims lands.
