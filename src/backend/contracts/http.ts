@@ -1,4 +1,4 @@
-// Draft resource paths from context §11.5; only health is implemented in K1.
+// Resource inventory; auth mode implements K2 and the documented K3/K4-lite subset.
 // This inventory is metadata, not a claim that the remaining routes exist.
 export const apiRoutes = [
   ['POST', '/auth/register'], ['POST', '/auth/login'], ['POST', '/auth/logout'], ['GET', '/auth/me'],

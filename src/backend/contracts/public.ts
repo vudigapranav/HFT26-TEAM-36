@@ -108,3 +108,26 @@ export const AuthCredentials = object({
 export const AuthUserResponse = object({ user: object({
   user_id: Type.String({ format: 'uuid' }), email: Type.String({ format: 'email', maxLength: 254 }),
 }) });
+
+// K3/K4-lite additive responses. OPEN policies remain visible to consumers.
+export const PortfolioResponse = object({
+  profile: CandidateProfile,
+  warnings: Type.Array(Type.String({ maxLength: 4000 }), { maxItems: 200 }),
+  injection_flags: Type.Array(Type.String({ maxLength: 200 }), { maxItems: 500 }),
+});
+export const FocusLane = object({ domain: Domain, skills: Type.Array(text(100), { maxItems: 50 }), topics: Type.Array(Topic, { minItems: 1, maxItems: 19 }) });
+export const QuizResponse = object({ questions: Type.Array(QuizQuestion, { maxItems: 10 }) });
+export const QuizAnswers = object({ answers: Type.Array(object({ question_id: Id, option_id: Id }), { maxItems: 10 }) });
+export const FocusLaneResponse = object({ focus_lane: FocusLane });
+export const AssessmentState = object({
+  assessment_id: Id, report_id: Id, task_id: Id, current_tier: Tier,
+  status: Type.Enum(['active', 'finished']), started_at: Type.String({ format: 'date-time' }),
+  expires_at: Type.String({ format: 'date-time' }), remaining_sec: Type.Integer({ minimum: 0, maximum: 3600 }),
+  policy_todos: Type.Array(Type.String({ maxLength: 80 }), { maxItems: 5 }),
+  runner: Type.Enum(['immutable_seed_only', 'isolated']),
+  auto_submit_error: Type.Optional(Type.String({ maxLength: 80 })),
+});
+export const TaskFilesRequest = object({ files: Type.Array(File, { minItems: 1, maxItems: 20 }) });
+export const RunFilesRequest = object({ files: Type.Optional(Type.Array(File, { minItems: 1, maxItems: 20 })) });
+export const HintResponse = object({ level: Type.Integer({ minimum: 1, maximum: 3 }), text: text(4000) });
+export type AuthUser = Static<typeof AuthUserResponse>['user'];

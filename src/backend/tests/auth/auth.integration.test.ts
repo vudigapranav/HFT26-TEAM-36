@@ -36,7 +36,7 @@ describe.skipIf(!enabled)('K2 with real isolated PostgreSQL', () => {
     expect(login.statusCode).toBe(200);
     const cookie = cookieFrom(login);
     expect(login.headers['set-cookie']).toContain('HttpOnly');
-    expect(login.headers['set-cookie']).toContain('SameSite=Strict');
+    expect(login.headers['set-cookie']).toContain('SameSite=Lax');
     expect(login.headers['set-cookie']).toContain('Max-Age=');
     const token = cookie.split('=')[1]!;
     const stored = await pool.query('SELECT token_hash, expires_at FROM auth_sessions');

@@ -1,6 +1,10 @@
 import { buildApp } from './app.js';
 import { readConfig } from './config.js';
 import { createDevPorts } from './dev-stubs.js';
+import { readAuthUser } from './auth.js';
+import { AssessmentStore } from './assessment-store.js';
+import { createWiredPorts } from './wiring.js';
+import { loadSeed } from '../runner/local/seed-runner.js';
 import { createPool } from './db/pool.js';
 
 let pool: ReturnType<typeof createPool> | undefined;
@@ -8,8 +12,11 @@ try {
   const config = readConfig();
   pool = config.mode === 'auth' ? createPool(config.database_url) : undefined;
   if (pool) await pool.query('SELECT user_id FROM auth_users LIMIT 0');
-  const app = await buildApp({ ports: createDevPorts(), ...(pool && config.mode === 'auth' ? {
-    auth: { pool, origin: config.auth_origin, secure: config.secure_cookies },
+  const auth = pool && config.mode === 'auth' ? { pool, origin: config.auth_origin, secure: config.secure_cookies } : undefined;
+  const seed = auth ? await loadSeed() : undefined;
+  const app = await buildApp({ ports: seed ? createWiredPorts(seed) : createDevPorts(), ...(auth && seed ? {
+    auth, assessment: { store: new AssessmentStore(), seed, origin: auth.origin,
+      authenticate: async request => (await readAuthUser(request, auth))?.user_id },
   } : {}) });
   if (pool) { const appPool = pool; app.addHook('onClose', async () => { await appPool.end(); }); }
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => {

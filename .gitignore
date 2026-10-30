@@ -12,3 +12,6 @@ coverage/
 
 # Local pnpm dependency cache
 .pnpm-store/
+
+# Dedicated local development database data/socket/logs
+.local/

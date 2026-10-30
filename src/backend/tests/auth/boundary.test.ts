@@ -2,6 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
 import { buildApp } from '../../api/app.js';
 import { createDevPorts } from '../../api/dev-stubs.js';
+import { readAuthUser } from '../../api/auth.js';
+import { loadSeed } from '../../runner/local/seed-runner.js';
+import { createWiredPorts } from '../../api/wiring.js';
+import { AssessmentStore } from '../../api/assessment-store.js';
 import { readConfig } from '../../api/config.js';
 
 // Real pool, never contacted: these HTTP checks must reject before any database access.
@@ -34,6 +38,21 @@ describe('K2 HTTP boundary without database access', () => {
     const logout = await app.inject({ method: 'POST', url: '/auth/logout', headers: { origin: 'http://localhost:3001' } });
     expect(logout.statusCode).toBe(204);
     expect(logout.headers['set-cookie']).toContain('Max-Age=0');
+    expect(logout.headers['set-cookie']).toContain('SameSite=Lax');
+  });
+  it('protects assessment wiring with the actual cookie-session reader', async () => {
+    const seed = await loadSeed();
+    const auth = { pool, origin: 'http://localhost:3001', secure: false };
+    const secured = await buildApp({ ports: createWiredPorts(seed), auth, assessment: {
+      store: new AssessmentStore(), seed, origin: auth.origin,
+      authenticate: async request => (await readAuthUser(request, auth))?.user_id,
+    } });
+    try {
+      for (const cookie of ['', 'tc_session=invalid']) {
+        const response = await secured.inject({ method: 'POST', url: '/portfolio', headers: { origin: auth.origin, cookie }, payload: {} });
+        expect(response.statusCode).toBe(401);
+      }
+    } finally { await secured.close(); }
   });
   it('requires explicit, safe auth settings', () => {
     const database = 'postgresql://localhost/torquecode';
