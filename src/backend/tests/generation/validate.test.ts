@@ -223,3 +223,47 @@ it('K5 rejects fabricated incomplete runner results', async () => {
   expect(receipt.valid).toBe(false);
   expect(gate(receipt, 'reference').status).toBe('fail');
 });
+
+// Contract receipts describe only the checks that actually ran.
+it('does not claim statement-example or brute-force validation for undeclared artifacts', async () => {
+  const task = await seed('novice');
+  let invocation = 0;
+  const runner: Ports['runTests'] = async input => {
+    const starter = ++invocation === 4;
+    const tests = input.tests.flatMap(test => test.ids.map(id => ({
+      id, visibility: test.visibility, duration_ms: 0,
+      status: starter && task.f2p_ids.includes(id) ? 'fail' as const : 'pass' as const,
+    })));
+    return { kind: 'ok', value: {
+      run_id: `receipt-${invocation}`, task_id: input.task_id, mode: input.mode,
+      tests, passed: tests.filter(t => t.status === 'pass').length, total: tests.length,
+      stdout: '', stderr: '', timed_out: false,
+    } };
+  };
+  const receipt = await validate(task, runner);
+  expect(receipt.valid).toBe(true);
+  expect(gate(receipt, 'examples').reason)
+    .toBe('No statement examples declared; covered by visible tests');
+  expect(gate(receipt, 'differential').reason)
+    .toBe('Reference deterministic across 3 runs (no brute-force oracle supplied)');
+  expect(invocation).toBe(4);
+});
+
+it('rejects Master tasks without a named performance test', async () => {
+  const task = await seed('novice');
+  task.tier = 'master';
+  let invocation = 0;
+  const runner: Ports['runTests'] = async input => {
+    const starter = ++invocation === 4;
+    const tests = input.tests.flatMap(test => test.ids.map(id => ({
+      id, visibility: test.visibility, duration_ms: 0,
+      status: starter && task.f2p_ids.includes(id) ? 'fail' as const : 'pass' as const,
+    })));
+    return { kind: 'ok', value: {
+      run_id: `perf-${invocation}`, task_id: input.task_id, mode: input.mode,
+      tests, passed: tests.filter(t => t.status === 'pass').length, total: tests.length,
+      stdout: '', stderr: '', timed_out: false,
+    } };
+  };
+  expect(gate(await validate(task, runner), 'performance').status).toBe('fail');
+});
