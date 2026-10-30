@@ -405,3 +405,21 @@ Base: origin/main `5545766` (K10 PR 42 merged). Branch `rithvik/runner-admission
 | D2 | Low | `deploy/stop.sh` kills **whatever** listens on the backend port if the graceful stop fails; it doesn't verify the process is ours. | `deploy/lib.sh` | Record the native PID at start (have the backend write it) and check the command line before killing. |
 | D3 | Medium | IPC limits are per message (1 MiB) and per call count (10,000), with no cumulative byte budget per run. A run could relay up to about 10 GB in the worst case, bounded in practice only by the time limit and the grader's memory. | `runner/dockerRunner.ts` | Add a cumulative relayed-bytes budget per run (e.g. 32 MiB). Over budget means the worker is killed and the tests are `error`. |
 | D4 | Medium | The guarded assistant blocks code fragments, not prose: "loop over every element instead" can still give away a one-token fix. | `llm/guards.ts`, `llm/assistant.ts` | A reference-aware prose check (the tokens that differ between starter and reference, mentioned in prose), plus a per-task cap on assistant messages (TODO(OPEN-ASSISTANT-LIMITS)). |
+
+## 2026-10-31 05:30 — R6b — cloud VM + Vercel: PREPARED, NOT DEPLOYED
+Base: origin/main `a32c5cb`. Branch `rithvik/r6b-cloud`; only `deploy/cloud/` and status changed. **No VM had been provided**, so nothing has run on a VM or a public URL.
+- **Prepared:**
+  - `deploy/cloud/setup-vm.sh`: Ubuntu 24.04, idempotent. Installs Docker Engine + Compose, Node 24, Caddy and Python 3. Firewall: 443 plus SSH from `ADMIN_SSH_CIDR` only. Dedicated `torquecode` user. Then PostgreSQL in Compose on 127.0.0.1, runner image, build, migrations, secrets files (640), Caddy, systemd, and a local health check. It prints the proxy secret once.
+  - `torquecode-backend.service`: hardened, but deliberately without `PrivateTmp`, because dockerd must bind-mount the runner's `/tmp` workspaces.
+  - `Caddyfile`: auto-HTTPS on 443. Requests without the `X-TorqueCode-Proxy` secret get 403; the header is stripped; `X-Forwarded-For` is set from Vercel's `X-Real-IP`.
+  - `backend.env.example`, `vercel.json.example`, and `README.md` (security model, install, operations, recovery, verification checklist).
+- **Checked here:**
+  - `bash -n setup-vm.sh` OK.
+  - The official `caddy:2` image reports the Caddyfile as `Valid configuration`.
+  - The gate, run locally on HTTP: no secret gives **403**, a wrong secret **403**, the correct secret passes to the upstream (502 with no backend running).
+  - Not checked: the setup script on Ubuntu, ACME certificates, systemd, ufw, the Vercel middleware and rewrite, and every item on the README's verification checklist.
+- **Blockers and owners:**
+  - **Pranav:** the VM and DNS for `<backend-host>`.
+  - **Karthik (K11):** `TRUST_PROXY`, so the client IP is read from one trusted hop (Caddy on loopback); without it, every user shares one IP and the auth rate limiter blocks them. Also PostgreSQL persistence for assessments, so restarts keep them.
+  - **Akshit:** `src/frontend/vercel.json` and `middleware.ts` as given in `deploy/cloud/README.md`, the `TORQUECODE_PROXY_SECRET` env var in Vercel, relative `/api` calls, and sanitized rendering of generated task text.
+- **Honest risk:** the `torquecode` user is in the `docker` group, which is root-equivalent on the VM. Use a dedicated VM. Rootless Docker hasn't been tried (it needs cgroup v2 delegation to keep R3's limits).

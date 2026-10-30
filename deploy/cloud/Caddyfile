@@ -1,0 +1,49 @@
+# Caddy in front of the TorqueCode backend on the VM. Automatic HTTPS (Let's Encrypt via
+# TLS-ALPN on 443; port 80 stays closed) and renewal. The backend listens on 127.0.0.1:3001 only.
+#
+# Trusted proxy chain: browser -> Vercel (rewrite /api) -> Caddy -> Fastify.
+# Only requests carrying the shared proxy secret (added by the Vercel middleware, see README)
+# are accepted, so nobody can reach the backend directly and forge X-Forwarded-For.
+{
+	email {$ACME_EMAIL}
+	auto_https disable_redirects
+	servers {
+		timeouts {
+			read_body 15s
+			read_header 10s
+			write 90s
+			idle 2m
+		}
+	}
+}
+
+{$BACKEND_HOST} {
+	@viaVercel header X-TorqueCode-Proxy {$PROXY_SECRET}
+	handle @viaVercel {
+		request_body {
+			max_size 2MB
+		}
+		reverse_proxy 127.0.0.1:3001 {
+			# Never pass the secret or client-supplied forwarding headers through; set the
+			# client IP from the value Vercel forwarded (only trusted because the secret matched).
+			header_up -X-TorqueCode-Proxy
+			header_up X-Forwarded-For {http.request.header.X-Real-Ip}
+			header_up X-Real-Ip {http.request.header.X-Real-Ip}
+			transport http {
+				response_header_timeout 60s
+			}
+		}
+	}
+	handle {
+		respond "Forbidden" 403
+	}
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+	}
+	log {
+		output file /var/log/caddy/torquecode.log
+		format json
+	}
+}
