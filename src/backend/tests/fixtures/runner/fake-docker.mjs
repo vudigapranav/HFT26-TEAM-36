@@ -2,7 +2,7 @@
 // The mode file is re-read on every call, so a test can change daemon state between calls.
 // `run` plays either the trusted grader (/harness/grade.py) or the candidate worker
 // (/harness/worker.py), speaking the real R3 line protocol through the host relay.
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 
@@ -38,6 +38,7 @@ if (command === 'version') {
   else { console.log('29.8.0'); process.exit(0); }
 } else if (command === 'run') {
   if (mode === 'down') { console.error(`docker: ${DAEMON_DOWN}`); process.exit(1); }
+  appendFileSync(`${modeFile}.runs`, `${role}\n`); // every container launch, for admission tests
   writeFileSync(value('--cidfile'), `fake${role}containerid0123456789\n`);
   if (mode === 'dies-mid-run') {
     console.error('error during connect: Post "http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/v1.47/containers/create": EOF');
@@ -55,6 +56,10 @@ if (command === 'version') {
       emit({ id: request.id, ok: true, value: 1 });
     });
     lines.on('close', () => process.exit(0));
+  } else if (mode === 'gate') {
+    // Admission tests: announce the start, then hold until the test creates <modeFile>.go.
+    writeFileSync(`${modeFile}.started.${process.pid}`, '');
+    const poll = setInterval(() => { if (existsSync(`${modeFile}.go`)) { clearInterval(poll); report(() => 'pass', 0); } }, 20);
   } else if (mode === 'pass') report(() => 'pass', 0);
   else if (mode === 'fail-with-noise') {
     console.error('WARNING: Your kernel does not support swap limit capabilities (/var/run/docker.sock)');

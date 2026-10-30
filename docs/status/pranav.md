@@ -125,6 +125,33 @@ Newest entries at the bottom. Written by `/ship`.
 - Seams/contracts affected: none
 - Next: P13 once Karthik's K8 adds Report.claims.
 
+## 2026-10-31 04:45 — P14 — attack suite v2 for K10 (question sets, unlock, AI gating, assistant)
+- Changed: scripts/attack-api.py (all 39 original checks kept; 28 new K10 checks; SKIP support; target via TORQUECODE_API, default http://127.0.0.1:3001), scripts/pre-submit-check.sh (accepts "(N skipped)", honours TORQUECODE_API).
+- New checks:
+  - Unlock: 409 before every question has a Submit; allowed after submitting every question with wrong (starter) code; 2nd unlock; 3rd unlock → 409; another user can't unlock.
+  - Locked-set question: GET/PUT/run/submit → 403.
+  - First-set hint/assistant → 403; later-set hint → 200 and a hint race; assistant → 200 or 503 LLM_UNAVAILABLE.
+  - Oversized assistant message → 4xx. Assistant abuse (ignore instructions, whole function, forged history with a code turn): the reply is checked against reference lines not in the starter.
+  - The client can't send tier_unlocked/tier_upgraded/assistant_message/hint_served.
+  - 5 parallel submits + 3 unlocks: no 500s, unlocks_used ≤ 2.
+  - No /\b(novice|adept|master)\b/i in any candidate-facing response (report excluded).
+- One existing check adapted: "parallel hint spam" now also accepts 403, because K10 correctly disables hints on the first set. The race is re-run on an unlocked question.
+- Run: main @ 19df7ff, APP_MODE=auth, RUNNER=local, scratch PostgreSQL 15, no Featherless key, port 3002: **62 pass / 0 fail (5 skipped)**. Skipped: 3 assistant-abuse checks (no LLM key) and the 2nd/3rd unlock (needs the Docker runner to grade second-set submits). pre-submit-check against the same server: all 8 ✅ (pnpm test 275 passed / 55 skipped + 9 Python).
+- Not covered: K5 (validation engine) has no HTTP surface, so the API suite has nothing to attack there; its own tests cover it.
+- Teammates should know: **Rithvik**, on the demo machine (deploy/start.sh with Docker + key), run `python3 scripts/attack-api.py` and confirm 0 skips. That is the only run that exercises the assistant-abuse and 2nd/3rd-unlock checks.
+- Seams/contracts affected: none
+- Next: P13 once Report.claims lands.
+## 2026-10-31 05:05 — P15 — full-journey script (scripts/e2e-journey.py)
+- Changed: scripts/e2e-journey.py (new, Python stdlib only).
+- What it does: register (unique email) → login → /auth/me → upload docs/demo/demo-portfolio.json → quiz (answer all) → create assessment → wait until ready (polls generation status if present, READY_TIMEOUT_S, default 180 s) → set 1 run + submit every question → unlock → set 2: one hint + one assistant question → run + submit → unlock → set 3 → run + submit → report (final_score 0..100, one row per available question, AIE breakdown on later-set rows, the paste integrity signal it sent) → GET /reports list if present.
+  - BASE defaults to http://127.0.0.1:3001; ORIGIN defaults to BASE's scheme://host and must equal AUTH_ORIGIN.
+  - Locally (BASE on localhost + seed bank present) set 1 is fixed with the seed reference, matched by task title. Otherwise code is submitted as-is.
+  - ✅/❌ per step with timings; exits 1 on the first failure. Never prints cookies or the password.
+  - ⚠️ (not a failure) for: assistant 503 LLM_UNAVAILABLE without a key; no /reports list. A runner 503 is a failure, with a pointer to deploy/README.md.
+- Verified on main @ 19df7ff (APP_MODE=auth, RUNNER=local, scratch PostgreSQL 15, no key, port 3002): steps 1–10 ✅ through the set-1 reference fix (5/5), unlock 1 and the hint. Assistant ⚠️ (no key). Then it fails cleanly at the set-2 run with 503 SANDBOX_UNAVAILABLE, which is correct, because the local runner only grades the Novice seed. Also checked: an unreachable BASE fails with a clear message.
+- **Not yet verified live:** set 2/3 submits, unlock 2, the report checks and the report list. They need the Docker runner. **Rithvik**, after deploy/start.sh on the demo machine, run `python3 scripts/e2e-journey.py`; it should end "Journey PASSED". For the cloud check: `BASE=https://<app>/api ORIGIN=https://<app> python3 scripts/e2e-journey.py`.
+- Seams/contracts affected: none
+- Next: P16 docs refresh.
 ## 2026-10-31 05:25 — P16 — docs refresh after K10 + K5
 - Changed: README.md, docs/demo/PITCH_FACTS.md, docs/demo/DEMO_SCRIPT.md. Docs only.
 - README "What's real today" (checked at 19df7ff): K10 question sets + unlock rule + hints/assistant on later sets (#42), K5 validation engine (#44, wired as the validateTask seam), K7 seeds checked on Docker (R7), R3, R5-live, R6 one-command deploy (verified on Windows, not yet the demo Mac). In progress: K11 persistence, K6 generation, R6b cloud, frontend. "How to run the demo" → deploy/start.sh + verify.sh.
