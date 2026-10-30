@@ -24,3 +24,13 @@ Newest entries at the bottom. Written by `/ship`.
   - Topic matching is exact-synonym only (taxonomy.json rule), no fuzzy guessing.
 - Verified: typecheck clean; backend tests 40/40 (21 new: 6 fixtures per EXPECTED.md, invalid input, 300 randomized quiz lanes per fixture, 9 AIE rules); ownership check passed.
 - Next: P5 report builder.
+
+## 2026-10-30 23:59 — P5 — buildReport on the shared contracts
+- Changed: src/backend/scoring/report.ts, src/backend/tests/scoring/report.test.ts
+- Seams/contracts affected: implements Ports.buildReport exactly as in contracts/seams.ts. Output passes the public Report schema.
+- Teammates should know:
+  - Karthik: wire scoring/report.ts → buildReport. It reads the same event payloads as calculateAie (run/submit: { run_id, files_hash }; hint_served: { level }).
+  - Final score policy is in named constants at the top of report.ts: 80 × correctness + mean AIE over attempted Adept/Master tasks. TODO(OPEN-Q4): a Novice-only session scales correctness to 100 until the team decides.
+  - Focus areas = DSA topics of tasks not fully solved + behaviour notes (testing discipline, hint reliance). Integrity signals count tab_hidden, copy, paste, assistant_blocked, extraction_flagged.
+- Verified: typecheck clean; backend tests all pass; ownership check passed.
+- Next: help with integration for the 00:30 checkpoint.
