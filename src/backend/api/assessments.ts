@@ -71,6 +71,35 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       const result = real(outcome);
       // Validate identity/mode before associating a runner result with this user/session.
       if (result.task_id !== record.task.task_id || result.mode !== mode) throw new Error('Runner result mismatch');
+      // K10: validate results against the server-owned test manifest.
+      // An incomplete or forged result must never count as a grade.
+      const selectedTests = record.task.tests.filter(
+        test => mode === 'submit' || test.visibility === 'visible',
+      );
+      const expectedIds = selectedTests.flatMap(test => test.ids);
+      const expected = new Map(
+        selectedTests.flatMap(test =>
+          test.ids.map(id => [id, test.visibility] as const),
+        ),
+      );
+      const actualIds = result.tests.map(test => test.id);
+
+      if (
+        expectedIds.length === 0 ||
+        expected.size !== expectedIds.length ||
+        result.tests.length !== expectedIds.length ||
+        new Set(actualIds).size !== expectedIds.length ||
+        result.total !== expectedIds.length ||
+        result.passed !== result.tests.filter(
+          test => test.status === 'pass',
+        ).length ||
+        result.tests.some(
+          test => expected.get(test.id) !== test.visibility,
+        )
+      ) {
+        throw new HttpProblem(503, 'SANDBOX_UNAVAILABLE');
+      }
+
       publicRun(result); // Reject run-mode hidden results before storing/returning.
       if (options.runner_status?.runner === 'isolated') options.runner_status.available = true;
       record.runs.push(result);

@@ -415,3 +415,61 @@ it('K10 unlocks and upgrades to an available adept task', async () => {
   expect(record.events.filter(e => e.type === 'tier_upgraded'))
     .toHaveLength(1);
 });
+
+it('K10 refuses unlock when a submit omits hidden tests', async () => {
+  const runTests = vi.fn<Ports['runTests']>(async input => ({
+    kind: 'ok',
+    value: {
+      run_id: 'incomplete-submit',
+      task_id: input.task_id,
+      mode: input.mode,
+      tests: [
+        {
+          id: 'tests/test_visible.py::test_last_day_peak',
+          status: 'pass',
+          visibility: 'visible',
+          duration_ms: 0,
+        },
+        {
+          id: 'tests/test_visible.py::test_middle_day_peak',
+          status: 'pass',
+          visibility: 'visible',
+          duration_ms: 0,
+        },
+      ],
+      passed: 2,
+      total: 2,
+      stdout: '',
+      stderr: '',
+      timed_out: false,
+    },
+  }));
+
+  const { call, seed, store } = await setup({ runTests });
+  await call('POST', '/portfolio', portfolio);
+
+  const created = await call('POST', '/assessments', {});
+  const id = created.json().assessment_id;
+  const record = store.assessments.get(id)!;
+
+  record.tier_work!.adept = {
+    task: { ...structuredClone(seed), task_id: 'test-adept', tier: 'adept' },
+    files: structuredClone(seed.files),
+    hint_level: 0,
+  };
+
+  const submitted = await call(
+    'POST',
+    `/assessments/${id}/tasks/${seed.task_id}/submit`,
+    {},
+  );
+
+  expect(submitted.statusCode).toBe(503);
+  expect(submitted.json().error.code).toBe('SANDBOX_UNAVAILABLE');
+  expect(record.runs).toHaveLength(0);
+
+  const status = await call('GET', `/assessments/${id}/status`);
+  expect(status.json().unlocked_tiers).toEqual(['novice']);
+  expect(record.events.filter(e => e.type === 'tier_unlocked'))
+    .toHaveLength(0);
+});
