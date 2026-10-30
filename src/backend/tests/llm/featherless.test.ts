@@ -32,6 +32,8 @@ const request = (purpose: ChatRequest['purpose'] = 'generation', extra: Partial<
 type ChatHandler = (body: { model: string; messages: unknown; max_tokens: number }, signal: AbortSignal, call: number) => Promise<Response> | Response;
 function harness(options: {
   chat?: ChatHandler; plan?: number | 'fail'; costs?: Record<string, number>; config?: Partial<FeatherlessConfig>; apiKey?: string | undefined;
+  planResponse?: () => Response | Promise<Response>; metadata?: (id: string) => Response | Promise<Response>;
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>; now?: () => number; onLog?: (event: LogEvent) => void;
 } = {}) {
   const urls: string[] = [];
   const bodies: { model: string; messages: unknown; max_tokens: number }[] = [];
@@ -46,10 +48,12 @@ function harness(options: {
     urls.push(url);
     headersSeen.push(JSON.stringify(init.headers ?? {}));
     if (url.endsWith('/plan')) {
+      if (options.planResponse) return options.planResponse();
       return options.plan === 'fail' ? json({ error: 'down' }, 500) : json({ concurrency: options.plan ?? 100, credits: '25.0' });
     }
     if (url.includes('/models/')) {
       const id = decodeURIComponent(url.split('/models/')[1]!);
+      if (options.metadata) return options.metadata(id);
       return json({ id, concurrency_cost: options.costs?.[id] ?? 1, available_on_current_plan: true });
     }
     chatCalls += 1;
@@ -70,8 +74,9 @@ function harness(options: {
   }) as typeof fetch;
   const config: FeatherlessConfig = { ...readFeatherlessConfig({}), apiKey: 'apiKey' in options ? options.apiKey : KEY, ...options.config };
   const client = createFeatherlessClient(config, {
-    fetch: fakeFetch, log: event => logs.push(event), random: () => 0.5,
-    sleep: async (ms, signal) => { signal.throwIfAborted(); sleeps.push(ms); },
+    fetch: fakeFetch, log: event => { logs.push(event); options.onLog?.(event); }, random: () => 0.5,
+    sleep: options.sleep ?? (async (ms, signal) => { signal.throwIfAborted(); sleeps.push(ms); }),
+    ...(options.now ? { now: options.now } : {}),
   });
   return { client, urls, bodies, logs, sleeps, headersSeen, stats: () => ({ chatCalls, maxInFlight }) };
 }
@@ -339,5 +344,116 @@ describe('logging confidentiality and smoke command', () => {
     expect(outcome).toMatchObject({ ok: true, model: ASSIST, reply_chars: 5 });
     expect(urls.filter(url => url.endsWith('/chat/completions'))).toHaveLength(1);
     expect(await runSmoke('assistant', {}, { fetch: fakeFetch, log: () => {} })).toMatchObject({ ok: false, error: 'LLM unavailable: not_configured' });
+  });
+});
+
+describe('hardening: malformed bodies, abort races, metadata TTL, end-to-end deadline', () => {
+  const raw = (text: string) => () => new Response(text, { status: 200, headers: { 'content-type': 'application/json' } });
+  it.each<[string, () => Response]>([
+    ['JSON null', raw('null')],
+    ['JSON string', raw('"hello"')],
+    ['JSON number', raw('42')],
+    ['JSON array', raw('[{"message":{"content":"x"}}]')],
+    ['choices null', () => json({ choices: null })],
+    ['choices empty', () => json({ choices: [] })],
+    ['choices [null]', () => json({ choices: [null] })],
+    ['choices [42]', () => json({ choices: [42] })],
+    ['choice without message', () => json({ choices: [{}] })],
+    ['message null', () => json({ choices: [{ message: null }] })],
+    ['message is a string', () => json({ choices: [{ message: 'hi' }] })],
+    ['content is an object', () => json({ choices: [{ message: { content: { text: 'x' } } }] })],
+    ['blank content', () => reply('\n\t ')],
+    ['truncated JSON', raw('{"choices":[{"message":{"content":"x"')],
+    ['oversized body', () => new Response(`{"choices":[{"message":{"content":"${'x'.repeat(2 * 1_048_576 + 10)}"}}]}`, { status: 200 })],
+  ])('%s -> controlled malformed_response, no exception, no retry', async (_name, handler) => {
+    const h = harness({ chat: handler });
+    await expect(h.client.chat(request(), ctx())).resolves.toEqual({ kind: 'unavailable', code: 'SANDBOX_UNAVAILABLE', message: 'LLM unavailable: malformed_response' });
+    expect(h.stats().chatCalls).toBe(1);
+    expect(h.client.limiter.stats()).toEqual({ inFlight: 0, usedUnits: 0, queued: 0 });
+  });
+
+  it('null or junk plan/metadata bodies fall back safely and the chat still works', async () => {
+    const h = harness({ planResponse: () => new Response('null', { status: 200 }), metadata: () => new Response('[1,2]', { status: 200 }) });
+    expect((await h.client.chat(request(), ctx())).kind).toBe('ok');
+    expect(h.client.limiter.limits()).toEqual({ maxInFlight: 1, units: Number.POSITIVE_INFINITY });
+  });
+
+  it('abort before the call: rejects without any network request', async () => {
+    const h = harness();
+    await expect(h.client.chat(request(), ctx(AbortSignal.abort(new Error('gone'))))).rejects.toThrow('gone');
+    expect(h.urls).toEqual([]);
+  });
+
+  it('abort that lands between plan load and the metadata wait is not missed', async () => {
+    const controller = new AbortController();
+    // Metadata never answers; the abort fires synchronously while the plan finishes loading.
+    const h = harness({ metadata: () => new Promise<Response>(() => {}), onLog: event => { if (event.event === 'featherless_plan') controller.abort(new Error('left during plan')); } });
+    const started = Date.now();
+    await expect(h.client.chat(request(), ctx(controller.signal))).rejects.toThrow('left during plan');
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(h.client.limiter.stats()).toEqual({ inFlight: 0, usedUnits: 0, queued: 0 });
+  });
+
+  it('abort while waiting for shared metadata rejects only that caller', async () => {
+    const meta = deferred<Response>();
+    const h = harness({ metadata: () => meta.promise });
+    const controller = new AbortController();
+    const leaving = h.client.chat(request(), ctx(controller.signal));
+    const staying = h.client.chat(request(), ctx());
+    while (!h.urls.some(url => url.includes('/models/'))) await tick();
+    controller.abort(new Error('left'));
+    await expect(leaving).rejects.toThrow('left');
+    meta.resolve(json({ concurrency_cost: 1, available_on_current_plan: true }));
+    expect((await staying).kind).toBe('ok');
+    expect(h.stats().chatCalls).toBe(1);
+  });
+
+  it('abort during retry backoff stops retrying and releases capacity', async () => {
+    const controller = new AbortController();
+    const h = harness({
+      chat: () => json({}, 503),
+      sleep: (_ms, signal) => new Promise<void>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        setTimeout(() => controller.abort(new Error('cancelled in backoff')), 0);
+      }),
+    });
+    await expect(h.client.chat(request(), ctx(controller.signal))).rejects.toThrow('cancelled in backoff');
+    expect(h.stats().chatCalls).toBe(1);
+    expect(h.client.limiter.stats()).toEqual({ inFlight: 0, usedUnits: 0, queued: 0 });
+  });
+
+  it('transient metadata failures and "unavailable" flags expire instead of poisoning the model', async () => {
+    let clock = 1_000_000;
+    let metaCalls = 0;
+    const metaAnswers = [json({}, 500), json({}, 404), json({ concurrency_cost: 1, available_on_current_plan: false }), json({ concurrency_cost: 1, available_on_current_plan: true })];
+    const h = harness({ now: () => clock, metadata: () => metaAnswers[Math.min(metaCalls++, metaAnswers.length - 1)]! });
+    expect((await h.client.chat(request(), ctx())).kind).toBe('ok'); // 500: unknown cost, still served
+    clock += 61_000;
+    expect((await h.client.chat(request(), ctx())).kind).toBe('ok'); // 404 on metadata: not trusted as "missing"
+    clock += 61_000;
+    expect(await h.client.chat(request(), ctx())).toMatchObject({ message: 'LLM unavailable: model_unavailable' });
+    clock += 61_000;
+    expect((await h.client.chat(request(), ctx())).kind).toBe('ok'); // recovered after the short TTL
+    expect(metaCalls).toBe(4);
+  });
+
+  it('the timeout is end-to-end: time spent queued counts, so a stuck queue yields timeout, not a 30 s wait', async () => {
+    // The provider never answers, so the second call spends its life queued behind the first.
+    const h = harness({ config: { maxConcurrency: 1, requestTimeoutMs: 150 }, chat: () => new Promise<Response>(() => {}) });
+    const first = h.client.chat(request(), ctx());
+    while (h.stats().chatCalls < 1) await tick();
+    const started = Date.now();
+    const second = await h.client.chat(request('assistant'), ctx());
+    expect(second).toMatchObject({ message: 'LLM unavailable: timeout' });
+    expect(Date.now() - started).toBeLessThan(2000); // nowhere near the 30 s queue timeout
+    expect(await first).toMatchObject({ message: 'LLM unavailable: timeout' }); // the stuck call is bounded too
+    expect(h.client.limiter.stats()).toEqual({ inFlight: 0, usedUnits: 0, queued: 0 });
+  });
+
+  it('a retry that would overrun the deadline is not attempted', async () => {
+    const h = harness({ config: { requestTimeoutMs: 1000 }, chat: () => json({}, 429, { 'retry-after': '5' }) });
+    expect(await h.client.chat(request(), ctx())).toMatchObject({ message: 'LLM unavailable: rate_limited' });
+    expect(h.stats().chatCalls).toBe(1);
+    expect(h.sleeps).toEqual([]);
   });
 });

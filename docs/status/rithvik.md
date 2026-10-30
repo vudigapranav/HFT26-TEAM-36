@@ -148,3 +148,90 @@ Measured 2026-10-31 from this laptop, key read from `.env` (never logged).
   - Plan and model metadata calls go through their own 5 s timeout, not the queue.
   - No streaming. The credit balance isn't tracked per call (only token counts are logged).
 - Next: R5 (hints + guarded assistant on top of `chat`), then R3 hardening.
+
+## 2026-10-31 — Reliability fixes (R2/R4) + R5 guarded assistant
+Base: origin/main `4dbe31a` (R4 PR 18 merged; K9 wired `runTestsInDocker`). Branch `rithvik/reliability-r5`.
+
+### Fix 1: Docker outage graded as a candidate attempt (review finding 7, HIGH)
+- Root cause, confirmed here: with the daemon unreachable, the real CLI exits **1**, not 125 (`docker --host tcp://127.0.0.1:9 run ...` gives exit 1 and "error during connect ... 127.0.0.1:9"). R2 only treated exit codes 125/126/127 as infrastructure failures, so an outage was graded all-`error`, and Docker's own text, including the daemon address, reached stderr.
+- `runner/dockerRunner.ts`:
+  - Bounded health check `docker version --format '{{.Server.Version}}'` before each run. A healthy result is cached for 10 s; a failure is never cached.
+  - `--cidfile` written outside the mounts. No container ID means Docker never created the container, so it's an infrastructure failure, whatever the exit code.
+  - Any run that isn't cleanly gradable (no report, exit code other than 0/1, or timeout) is re-checked against the daemon. Unreachable or undecidable means `SANDBOX_UNAVAILABLE` and no grade. A healthy daemon means a candidate fault (`os._exit`, OOM), graded as `error`.
+  - `docker version/kill/rm` run with a hard time limit (`controlTimeoutMs`, default 10 s). If the daemon hangs past the deadline, the docker CLI process itself is force-killed.
+  - Unavailable messages are generic. Docker CLI lines (`docker:`, `Error response from daemon`, `error during connect`, `WARNING:`, `docker.sock`, `npipe:` ...) are removed from candidate stderr.
+  - New option `dockerArgs` (a prefix such as `['--host', ...]`; tests use it to drive a fake CLI). Existing exports and signatures are unchanged.
+- Tests in `tests/runner/docker-infra.test.ts`, 13 total:
+  - With a fake CLI (`tests/fixtures/runner/fake-docker.mjs`): daemon down before Run; daemon goes down after an earlier successful run (inside the 10 s cache); CLI exits 1 after creating the container; health check hangs (bounded); run hangs and the daemon dies (CLI force-killed, unavailable rather than timeout); candidate exit 1 on a healthy daemon (graded `error`); normal failure with Docker noise removed; missing binary.
+  - Against the real Docker CLI: unreachable daemon via `--host tcp://127.0.0.1:9`, missing image, candidate `os._exit(0)` and `os._exit(1)`, reference pass and a normal failure.
+  - Every unavailable result is checked for leaked socket paths, hosts, host paths or workspace names.
+
+### Fix 2: Featherless hardening (`llm/featherless.ts`)
+- Bug: a 200 response whose body was JSON `null` threw a `TypeError` out of `chat` (`null.choices`). Now:
+  - The full response shape is validated: object, non-empty `choices`, object choice, object message, non-blank string content.
+  - The body is read with a 2 MiB cap (metadata: 256 KB).
+  - All of these give a controlled `malformed_response`: null, string, number or array bodies; null, empty or invalid choices; missing or wrongly typed message or content; blank content; truncated JSON; oversized body.
+  - Any unexpected exception becomes `provider_error` instead of escaping.
+- Metadata poisoning: an `available: false` or a metadata 404 used to be cached forever or for 5 minutes. Entries now expire: fresh results after 10 minutes, failures after 60 s. A metadata 404 counts as "unknown cost", not "missing model"; it once came from a bad User-Agent. The custom User-Agent workaround is kept.
+- Timeout: `FEATHERLESS_TIMEOUT_MS` (default **120 s**) is now **end-to-end per call**, covering metadata, queue wait, every attempt and backoff. Before, it was 60 s per attempt (about 3.5 minutes worst case). A retry that would overrun the deadline isn't attempted.
+- Abort: `untilAborted` now rejects an already-aborted signal immediately. Regression tests cover abort before the call, during plan load, while waiting on shared metadata (only that caller rejects), while queued, during fetch and during backoff. The last two already worked and are kept as regression tests.
+- 23 new tests (60 LLM-client tests in total). Against the pre-fix client, 4 of them fail: JSON null, oversized body, metadata TTL, and a retry overrunning the deadline.
+
+### R5: guarded assistant (`llm/assistant.ts`, `llm/guards.ts`, `llm/hints.ts`)
+- `createAssistant({ chat, referenceFiles?, onEvent? })` returns `Ports['assistantReply']`, with the exact contract types. It uses the shared `chat` seam and creates no other provider client.
+- Context: only the public task (title, tier, statement), the candidate's files (≤ 12k characters each, 24k total), visible failures (`id: status`), the bounded recent history (≤ 12 turns / 12k characters, oldest dropped) and the question (≤ 2000 characters).
+  - Untrusted content is wrapped in `<UNTRUSTED-{random nonce}>` blocks, and the system policy says that content is data, not instructions.
+  - The reference, hidden tests and hint ladder never enter the prompt; a test checks this.
+- Input guard (deterministic, `checkInput`) blocks: instruction override, developer mode, prompt extraction, requests for the full/fixed/complete solution, reference or official solution, hidden tests or grader inputs, encoded solutions (base64/rot13/hex), piecemeal ("next two lines"), pseudocode laundering, translation laundering, role-play, and requests for keys or config.
+  - Text addressed to the assistant inside candidate code comments is also blocked (`instructions_in_code`).
+  - Blocked requests return `{ blocked: true, reason }` without calling the model.
+  - Rules need intent words, so normal questions (off-by-one, `range(...)`, "how do I implement a loop", passwords in a Security task) pass. A test checks 9 legitimate questions.
+- Output guard (`checkOutput`) rejects:
+  - disclosure (hidden tests, reference, system prompt, policy text, the nonce);
+  - secrets (`sk-`, Bearer tokens, `FEATHERLESS_*`);
+  - code blocks over 6 lines, or more than 10 code lines in total;
+  - any redefinition of the task's own function or class;
+  - **reference similarity**: lines that are in the reference but not in the candidate's files, normalized for whitespace, comments and case, and also matched inside inline backticks.
+
+  The reference comes only from the injected server-side `referenceFiles` resolver and is used only for comparison. Without a resolver, or if it throws, a stricter policy applies (4-line blocks, 6 code lines).
+- A failed reply gets **one** regeneration with a stricter note; if that fails too, the request is blocked.
+- Featherless `unavailable` passes through unchanged. It isn't reported as a block and emits no event.
+- Events through `onEvent` (`assistant_message`, `assistant_blocked`, `extraction_flagged`) carry `task_id` plus metadata only: guard, code, character counts, drafts, model. They never include the question, code or reply. A failing event sink can't break the reply.
+- `createHintProvider(resolveLadder)` returns `Ports['nextHint']` for any task. It serves one level at a time, clamps the level to the ladder, and never returns the ladder. Karthik's seed-only `nextHint` in wiring is left alone; this is for generated tasks.
+- Tests in `tests/llm/assistant.test.ts`: **57 passed**, covering all 20 required scenarios.
+  - Mutation check: disabling the input guard fails 21 tests, the output guard 12, and the similarity check 3.
+  - These are mocked-chat unit tests, **not** end-to-end tests: no live model was called for R5.
+
+### Verification (Windows 11, Node 24.19.0, pnpm 11.25.0, Docker 29.8.0)
+- `pnpm typecheck` OK. `tsc -p` emits `dist/llm/{assistant,featherless,guards,hints,smoke}.js` and `dist/runner/{dockerRunner,junit}.js`.
+- Focused suites (LLM + Docker runner + infrastructure + contracts): 165 passed, 2 failed. Both failures are K1 contract tests that use the local seed runner (see below).
+- Full suite: **7 failed, 224 passed, 9 skipped (PostgreSQL)**. Clean `origin/main` on this machine: **7 failed, 131 passed, 9 skipped**, the same 7 tests. The 93 extra passes are this branch's new tests, so there are no new failures.
+- My working copy had stale CRLF seed files from before K9's `.gitattributes` (`* text=auto eol=lf`). Re-checking them out removed 13 apparent failures. Anyone on Windows with an older clone should run: `git ls-files src/backend/seed_bank | xargs rm -f && git checkout HEAD -- src/backend/seed_bank`.
+
+### Teammates should know
+- **Karthik (owner of `runner/local/`, `api/`): the 7 remaining Windows failures** are all the local seed runner.
+  - `runner/local/seed-runner.ts:52` launches `.venv/bin/python`; on Windows uv creates `.venv/Scripts/python.exe`. Suggested: `process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python'`, plus `uv sync` in setup.
+  - `runner/local/process.ts` uses `process.kill(-pid)`, which is POSIX-only. Suggested: on win32, fall back to `child.kill('SIGKILL')` or `taskkill /T /F /PID`.
+  - The `build` script's `mkdir -p`/`cp` don't run under cmd.exe. Suggested: a small `node` script, or `shx`.
+- **Karthik, wiring `chat` (still not wired):** in `api/wiring.ts`, add `import { chat } from '../llm/featherless.js';` and put `chat` in the object returned by `createWiredPorts`.
+- **Karthik, wiring R5:**
+  ```ts
+  import { createAssistant } from '../llm/assistant.js';
+  assistantReply: createAssistant({
+    chat,
+    referenceFiles: async (taskId) => /* server-side PrivateTask lookup */ task?.reference_files ?? null,
+    onEvent: (e) => store.appendEvent({ session_id, task_id: e.task_id, ts, source: 'server', type: e.type, payload: e.payload }),
+  }),
+  ```
+  Session, tier entitlement (Adept/Master only) and assistant quotas (TODO(OPEN-ASSISTANT-LIMITS)) must be checked in the API **before** calling it, because `AssistantContext` carries no identity. Build the `onEvent` sink per request so the session ID comes from the authenticated session. For generated tasks, `createHintProvider(async id => store.task(id)?.hint_ladder ?? null)`.
+- **Karthik, contract:** `Unavailable['code']` still has no LLM code, so LLM failures use `SANDBOX_UNAVAILABLE`. Please add `LLM_UNAVAILABLE` (and `INVALID_REQUEST`). The API's 503 mapping for runner outages (finding 7, API side) is also yours.
+- **Pranav (AIE):** `assistant_message` is emitted only for replies actually delivered. Blocks emit `assistant_blocked` (plus `extraction_flagged` for extraction attempts). An unavailable LLM emits nothing, so outages never count as AI use.
+
+### Remaining limitations (not claimed as secure)
+- Sandbox: candidate code still shares the interpreter with the tests (R3). It can read hidden tests at runtime and forge a consistent report by forcing exit code 0. `/out` has no size cap.
+- Assistant guards are heuristics.
+  - Paraphrased extraction attempts, multi-turn decomposition and solutions written with renamed variables can get past the input guard and the line-level similarity check.
+  - The output guard limits code volume and blocks task-function redefinitions, which narrows but doesn't close that gap.
+  - The 10 canned jailbreaks are blocked at the input layer only because they're known patterns.
+  - Without a reference resolver there is no similarity check, only the stricter code-volume policy.
+- No live-model run of R5 yet: the assistant's behaviour with real Qwen output is unmeasured.
