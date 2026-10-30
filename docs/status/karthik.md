@@ -6,9 +6,9 @@ This file distinguishes implementation, executed verification, integration readi
 
 | Task | Implementation | Verification / integration |
 |---|---|---|
-| K0 decisions | Stack approved; Karthik confirmed team agreement. Decisions documented. | User re-confirmed original contracts after reading later checkpoint prompts; K1 PR pending. |
-| K1 skeleton/contracts/seed | Implemented, reviewed and committed on karthik/k1-skeleton; PR/merge pending. | Initial verification was 14 tests. Skill-assisted review now adds five TS cases and four real Python cases; final integrated verification below. |
-| K2 database/login | Not started | Not tested |
+| K0 decisions | Stack approved; Karthik confirmed team agreement. Decisions documented. | Approved contracts preserved; K1 merged in PR #6. Same stack explicitly retained for K2. |
+| K1 skeleton/contracts/seed | Implemented and merged in PR #6; local documentation correction retained. | Initial verification was 14 tests. Skill-assisted review now adds five TS cases and four real Python cases; final integrated verification below. |
+| K2 database/login | Implemented in working tree on karthik/k2-auth-db; not committed/pushed/merged | Local typecheck/build and 49 TS tests passed; Karthik reports 9/9 real PostgreSQL auth tests passed in host terminal. See K2 entry below. |
 | K3 sessions/timer/tiers | Not started | Blocked on product policies and real runner for candidate flow |
 | K4 complete API/background jobs | Not started | Not tested |
 | K5 validation engine | Not started | Seed checks are not the complete validation engine |
@@ -42,14 +42,14 @@ No test results are simulated. Development fixtures are labelled. No coverage pe
 
 ## Integration notes
 
-- Current task branch is `karthik/k1-skeleton`, created from updated `origin/main`; Karthik authorized reviewing, fixing and shipping original K1, then waiting for “next”. The original branch and backup stash are retained.
-- Pranav's setup kit and canonical backend plan are inherited from updated `origin/main`. The filled decisions file and uv.lock ownership addition are preserved.
-- Public contracts package and ten server-side seams are K1's main integration deliverable. No changes to frontend, intake, scoring, LLM or real runner/deployment modules.
-- Candidate execution, live generation, authentication, database, grading policies and full frontend journey are not ready.
+- Current task branch: `karthik/k2-auth-db`. It contains the K1 documentation correction and is based on main through Pranav's merged report builder (PR #8). K1 PR #6 and intake/quiz/AIE PR #7 are in local history. Existing changes are preserved.
+- K2 adds database-backed registration/login/logout and protected current-user lookup. The ten seam signatures remain unchanged; teammate implementation folders remain untouched.
+- Auth is enabled only by explicit APP_MODE=auth and validated configuration. Candidate execution, generation, assessment routes and frontend end-to-end integration remain unavailable.
+- Pending integration conflicts: empty-topic fallback differs from the decisions file; Pranav's Novice-only report scoring policy remains TODO(OPEN-Q4). Neither is silently decided by K2.
 
 ## Next
 
-Ship reviewed K1 to `vudigapranav/HFT26-TEAM-36` main, then wait for Karthik’s explicit “next”. K2 is not started. Product policies stay open; Pranav retains final merge ownership.
+Review and obtain approval to publish K2. Do not push or merge without Karthik's approval. K2 is not shipped; Pranav retains final merge ownership. Do not start K3–K8 as part of this task.
 
 ## 2026-10-30 23:23 IST — K1 — verified skeleton ready for review
 
@@ -120,3 +120,24 @@ Finalize integrated tests, documentation audit, pre-push hook and PR to vudigapr
 - Review coverage: all five requested skills were loaded; concrete effects and three red-before-green repairs are documented above. Native adversarial re-review found no remaining confirmed code defects. Test-quality review noted optional gaps: runtime schema checks for every fixture payload, intact-Unicode preservation below the cap, and explicit descendant-process liveness assertions. No external Claude review or complete candidate-sandbox certification is claimed.
 - Teammates should know: large/empty-topic intake behavior needs agreement before P1/K4 wiring; Python-only runtime support is not a promise of every candidate stack; no K1b/K2 endpoints were added.
 - Git/workflow: K1 implementation and marker repair are committed/pushed by the user as 7ad9158; documentation correction and PR publication remain. Base is the team fork's main, never cbitosc. Wait for “next” after K1 shipping.
+
+
+## 2026-10-31 — K2 — database/auth implementation and host PostgreSQL verification
+
+- Changed: api/auth.ts; api/db/{pool,migrate,command}.ts and migrations/001_auth.sql; app/config/server/OpenAPI integration; additive public AuthCredentials/AuthUserResponse schemas, Health.mode auth value and /auth/me route inventory; dependency manifests/lock/workspace policy; scripts/test-auth.mjs; tests/auth/{boundary,auth.integration}.test.ts; backend README, example configuration, decisions and this log. Local pnpm cache is git-ignored. All changes remain in Karthik-owned/shared paths.
+- Behavior: registration (201; duplicate normalized email 409), login (fresh opaque cookie), protected GET /auth/me, idempotent logout/revocation. PostgreSQL uniqueness/FK constraints, parameterized queries, Argon2id, SHA-256 session-token hashes, seven-day expiry, HttpOnly/SameSite/Secure cookie settings, exact Origin checks, bounded credentials/body size, persistent account/IP counters and bounded concurrent credential work.
+- Contracts/integration: TypeBox and snake_case preserved; no seam renames, teammate module wiring, K3–K8 work, or untrusted execution. HTTPS auth uses __Host-tc_session. UI/API must share configured origin through deployment integration; browser CORS and proxy trust are not enabled here. Default skeleton mode still works without a database.
+- Verification observed by Codex: strict typecheck and build passed; direct Vitest run passed 49 tests across 9 files, with the 9 real-PostgreSQL tests explicitly skipped in that invocation; 4 real Python reporter tests passed; all ten seam smoke calls passed with fixture/unavailable labels intact; seed reference passed 5/5 on three runs and starter had the expected 2 F2P failures/3 P2P passes; ownership and diff whitespace checks passed. Python verification used UV_CACHE_DIR=/private/tmp/torquecode-k2-uv-cache because the default cache is restricted.
+- Host verification reported by Karthik in this chat: `pnpm test:auth` PASSED, contracts build PASSED, Vitest integration suite 1/1 file and 9/9 auth tests PASSED against a real isolated PostgreSQL cluster. Covers registration/login/logout and private data boundaries, concurrent normalized registration, invalid credentials, origin protection, bounded input, forged/expired cookies, independent session revocation, rate limits and secure-cookie configuration. This is user-reported host evidence, not a Codex-observed database run.
+- Environment limitation: Codex initdb cannot create the required shared-memory segment (shmget: Operation not permitted). That sandbox restriction is not an application failure; the successful host-terminal test satisfies real PostgreSQL verification for this implementation. No unknown existing database cluster was modified by the harness. No claim is made that the monolithic `pnpm test` passed inside the sandbox.
+- Skills: api-design-principles, api-security-review and code-review-excellence instructions were loaded for K2. The security skill's referenced plays/api-security-review.md remains absent. No completed gstack review/ship/document-release pipeline, external-model review, load benchmark or production security certification is claimed for K2.
+- Known limitations: no password reset/email verification, edge or fleet-wide concurrent-work quota, live TLS/reverse-proxy browser test, or full assessment journey. Rate-limit successful attempts count toward the same account/IP windows. All implementation and test changes are currently uncommitted; no K2 push, PR or merge has occurred.
+- Next: review K2 and obtain publication approval. Preserve this branch/worktree and the original hooks; do not merge or advance to another task automatically.
+
+
+## 2026-10-31 — K2 — publication authorized, optional PostgreSQL test environment
+
+- Karthik explicitly requested immediate commit/push of K2 as implemented, with PostgreSQL tests skipped when the database runtime is unavailable. No further auth polish is included in this publication.
+- Updated scripts/test-auth.mjs: unavailable PostgreSQL startup runs Vitest with the database suite explicitly skipped; inherited database/test-enable variables are cleared. Once started, migration/assertion failures still fail. TORQUECODE_REQUIRE_DB=1 enforces mandatory database availability. Prior host verification remains 9/9 passing; skipped tests are never counted as passed.
+- Next approved scope: K3 + K4-lite seed assessment API before further auth polish, same-origin /api dev proxy, SameSite=Lax cookies, visible empty-topic fallback warning. Tier/Novice-only scoring stay TODO(OPEN-Q1/Q4). Local seed runner still rejects edited candidate code until isolated Docker runner is available.
+- Publication target: karthik/k2-auth-db in vudigapranav/HFT26-TEAM-36, base main; Pranav's assistant reviews/merges. No merge by this agent.

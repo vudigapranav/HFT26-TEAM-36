@@ -9,3 +9,6 @@ dist/
 coverage/
 .pytest_cache/
 *.tsbuildinfo
+
+# Local pnpm dependency cache
+.pnpm-store/

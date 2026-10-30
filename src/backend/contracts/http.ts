@@ -1,7 +1,7 @@
 // Draft resource paths from context §11.5; only health is implemented in K1.
 // This inventory is metadata, not a claim that the remaining routes exist.
 export const apiRoutes = [
-  ['POST', '/auth/register'], ['POST', '/auth/login'], ['POST', '/auth/logout'],
+  ['POST', '/auth/register'], ['POST', '/auth/login'], ['POST', '/auth/logout'], ['GET', '/auth/me'],
   ['POST', '/portfolio'], ['GET', '/onboarding-quiz'], ['POST', '/onboarding-quiz'],
   ['POST', '/assessments'], ['GET', '/assessments/{id}/status'],
   ['GET', '/assessments/{id}/tasks/{task_id}'], ['PUT', '/assessments/{id}/tasks/{task_id}/files'],

@@ -65,7 +65,7 @@ export const ApiError = object({ error: object({
   code: text(80), message: text(300), request_id: text(100),
   fields: Type.Optional(Type.Array(object({ path: text(200), message: text(300) }), { maxItems: 50 })),
 }) });
-export const Health = object({ status: Type.Literal('ok'), mode: Type.Literal('skeleton'), candidate_execution: Type.Literal(false) });
+export const Health = object({ status: Type.Literal('ok'), mode: Type.Enum(['skeleton', 'auth']), candidate_execution: Type.Literal(false) });
 export const GenerationProgress = object({
   assessment_id: Id,
   status: Type.Enum(['queued', 'generating', 'validating', 'ready', 'failed']),
@@ -99,3 +99,12 @@ export type Domain = Static<typeof Domain>;
 export type QuizQuestion = Static<typeof QuizQuestion>;
 export type AieScore = Static<typeof AieScore>;
 export type Report = Static<typeof Report>;
+
+// K2 auth fields are separate from assessment Session and CandidateProfile.
+export const AuthCredentials = object({
+  email: Type.String({ format: 'email', minLength: 3, maxLength: 254 }),
+  password: Type.String({ minLength: 12, maxLength: 128 }),
+});
+export const AuthUserResponse = object({ user: object({
+  user_id: Type.String({ format: 'uuid' }), email: Type.String({ format: 'email', maxLength: 254 }),
+}) });
