@@ -1,0 +1,105 @@
+{
+  "_note": "TODO(OPEN-Q2): quiz purpose/timing. Fixed MCQ bank, no LLM. Each option's points_to lists the domains and/or canonical topics (taxonomy.json) it leans toward. Per the §15 Q2 recommendation, answers may only narrow to domains and topics already claimed in the portfolio, never add new ones.",
+  "questions": [
+    {
+      "id": "q01",
+      "text": "Which kind of work would you most like to be tested on?",
+      "options": [
+        { "id": "a", "text": "Building user-facing pages and UI logic", "points_to": { "domains": ["web"] } },
+        { "id": "b", "text": "APIs, databases and server logic", "points_to": { "domains": ["backend"] } },
+        { "id": "c", "text": "Working with data and models", "points_to": { "domains": ["ml"] } },
+        { "id": "d", "text": "Finding and fixing security holes", "points_to": { "domains": ["security"] } }
+      ]
+    },
+    {
+      "id": "q02",
+      "text": "When a bug shows up, where do you feel most at home tracking it down?",
+      "options": [
+        { "id": "a", "text": "In the browser: state, rendering, events", "points_to": { "domains": ["web"] } },
+        { "id": "b", "text": "In request handlers and queries", "points_to": { "domains": ["backend"] } },
+        { "id": "c", "text": "In a data pipeline or notebook", "points_to": { "domains": ["ml"] } },
+        { "id": "d", "text": "In input handling and auth checks", "points_to": { "domains": ["security"] } }
+      ]
+    },
+    {
+      "id": "q03",
+      "text": "Which project would you pick for a weekend?",
+      "options": [
+        { "id": "a", "text": "A polished dashboard with live filters", "points_to": { "domains": ["web"], "topics": ["arrays", "sorting"] } },
+        { "id": "b", "text": "A rate-limited API with caching", "points_to": { "domains": ["backend"], "topics": ["hashing", "queue"] } },
+        { "id": "c", "text": "A small recommender from a CSV", "points_to": { "domains": ["ml"], "topics": ["heap", "sorting"] } },
+        { "id": "d", "text": "A login form that resists common attacks", "points_to": { "domains": ["security"], "topics": ["strings", "hashing"] } }
+      ]
+    },
+    {
+      "id": "q04",
+      "text": "How confident are you with keys and lookups (maps, sets, counting)?",
+      "options": [
+        { "id": "a", "text": "Very confident, test me on it", "points_to": { "topics": ["hashing"] } },
+        { "id": "b", "text": "Comfortable", "points_to": { "topics": ["hashing", "arrays"] } },
+        { "id": "c", "text": "Still learning", "points_to": { "topics": ["arrays"] } },
+        { "id": "d", "text": "Rather not be tested on it", "points_to": {} }
+      ]
+    },
+    {
+      "id": "q05",
+      "text": "Which of these feels most natural to you?",
+      "options": [
+        { "id": "a", "text": "Scanning a list with two indexes or a moving window", "points_to": { "topics": ["two_pointers", "sliding_window"] } },
+        { "id": "b", "text": "Splitting a problem into smaller copies of itself", "points_to": { "topics": ["recursion", "dp"] } },
+        { "id": "c", "text": "Walking through connected items like friends or routes", "points_to": { "topics": ["bfs_dfs", "graphs"] } },
+        { "id": "d", "text": "Keeping things in order: stacks, queues, sorting", "points_to": { "topics": ["stack", "queue", "sorting"] } }
+      ]
+    },
+    {
+      "id": "q06",
+      "text": "How confident are you with tree or graph problems?",
+      "options": [
+        { "id": "a", "text": "Very confident", "points_to": { "topics": ["trees", "graphs", "bfs_dfs"] } },
+        { "id": "b", "text": "Okay with trees, unsure with graphs", "points_to": { "topics": ["trees"] } },
+        { "id": "c", "text": "I've done a few traversals", "points_to": { "topics": ["bfs_dfs"] } },
+        { "id": "d", "text": "Rather not be tested on them", "points_to": {} }
+      ]
+    },
+    {
+      "id": "q07",
+      "text": "What do you want the report to tell you most?",
+      "options": [
+        { "id": "a", "text": "How solid my frontend logic is", "points_to": { "domains": ["web"] } },
+        { "id": "b", "text": "Whether my server code holds up", "points_to": { "domains": ["backend"] } },
+        { "id": "c", "text": "How I handle data and numeric code", "points_to": { "domains": ["ml"] } },
+        { "id": "d", "text": "How safe my code is", "points_to": { "domains": ["security"] } }
+      ]
+    },
+    {
+      "id": "q08",
+      "text": "Which task style suits you better?",
+      "options": [
+        { "id": "a", "text": "Fix a broken page component", "points_to": { "domains": ["web"] } },
+        { "id": "b", "text": "Fix a failing API endpoint", "points_to": { "domains": ["backend"] } },
+        { "id": "c", "text": "Fix a wrong data transformation", "points_to": { "domains": ["ml"] } },
+        { "id": "d", "text": "Patch a vulnerable handler", "points_to": { "domains": ["security"] } }
+      ]
+    },
+    {
+      "id": "q09",
+      "text": "How do you feel about optimizing slow code?",
+      "options": [
+        { "id": "a", "text": "I enjoy it; I'd pick a faster search or a heap", "points_to": { "topics": ["binary_search", "heap"] } },
+        { "id": "b", "text": "I'd cache results to avoid repeat work", "points_to": { "topics": ["dp", "hashing"] } },
+        { "id": "c", "text": "I'd make a simple greedy choice and check it", "points_to": { "topics": ["greedy", "sorting"] } },
+        { "id": "d", "text": "I prefer correctness over speed for now", "points_to": {} }
+      ]
+    },
+    {
+      "id": "q10",
+      "text": "Which of these text-heavy tasks appeals to you?",
+      "options": [
+        { "id": "a", "text": "Autocomplete for a search box", "points_to": { "domains": ["web"], "topics": ["trie", "strings"] } },
+        { "id": "b", "text": "Grouping duplicate records", "points_to": { "domains": ["backend"], "topics": ["hashing", "union_find"] } },
+        { "id": "c", "text": "Cleaning and tokenizing a text column", "points_to": { "domains": ["ml"], "topics": ["strings"] } },
+        { "id": "d", "text": "Sanitizing user input before it's stored", "points_to": { "domains": ["security"], "topics": ["strings"] } }
+      ]
+    }
+  ]
+}

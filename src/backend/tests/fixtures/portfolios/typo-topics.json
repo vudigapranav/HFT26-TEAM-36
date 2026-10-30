@@ -1,0 +1,18 @@
+{
+  "candidate": { "name": "Divya Nallamothu", "email": "divya.nallamothu@example.com" },
+  "projects": [
+    {
+      "name": "RouteMate",
+      "description": "Bus-route planner for a mid-sized city. Finds the fewest-transfer path between two stops and shows live arrival estimates.",
+      "tech_stack": ["python", "flask", "redis"],
+      "role": "Solo developer",
+      "highlights": [
+        "Modelled stops and routes as a graph and used BFS for fewest-transfer search",
+        "Cached arrival estimates in Redis with short expiry"
+      ]
+    }
+  ],
+  "tech_stack": ["python", "javascript"],
+  "skills": ["rest-apis", "caching"],
+  "dsa_topics_solved": ["dynamic programing", "Two Pointer", "hash maps", "BFS"]
+}

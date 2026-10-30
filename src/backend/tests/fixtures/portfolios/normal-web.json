@@ -1,0 +1,28 @@
+{
+  "candidate": { "name": "Meera Kotharu", "email": "meera.kotharu@example.com" },
+  "projects": [
+    {
+      "name": "ShelfSwap",
+      "description": "A book-exchange marketplace where students list used textbooks and trade them within their campus. Includes search, wishlists and in-app chat.",
+      "tech_stack": ["react", "express", "postgres", "node"],
+      "role": "Full-stack developer",
+      "highlights": [
+        "Built REST endpoints for listings, offers and chat threads",
+        "Added a debounced search bar with client-side caching"
+      ]
+    },
+    {
+      "name": "CanteenQ",
+      "description": "Order-ahead web app for a college canteen. Students place orders, staff see a live queue, and pickup tokens are issued in order.",
+      "tech_stack": ["react", "express", "mongodb", "tailwind"],
+      "role": "Frontend lead",
+      "highlights": [
+        "Designed the order-status dashboard with React hooks",
+        "Implemented token deduplication using a hash map on the server"
+      ]
+    }
+  ],
+  "tech_stack": ["javascript", "typescript", "html", "css"],
+  "skills": ["rest-apis", "sql", "react-hooks", "responsive-design"],
+  "dsa_topics_solved": ["arrays", "hashing", "two_pointers"]
+}

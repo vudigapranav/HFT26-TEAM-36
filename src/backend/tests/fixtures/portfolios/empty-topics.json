@@ -1,0 +1,15 @@
+{
+  "candidate": { "name": "Arjun Velpula", "email": "arjun.velpula@example.com" },
+  "projects": [
+    {
+      "name": "LeaveDesk",
+      "description": "Internal tool for a small office to request and approve leave. Managers get a weekly summary email.",
+      "tech_stack": ["python", "fastapi", "sqlite"],
+      "role": "Backend developer",
+      "highlights": ["Wrote the approval workflow and the summary email job"]
+    }
+  ],
+  "tech_stack": ["python"],
+  "skills": ["rest-apis", "sql"],
+  "dsa_topics_solved": []
+}
