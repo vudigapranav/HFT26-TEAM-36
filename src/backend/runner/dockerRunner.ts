@@ -12,10 +12,21 @@ import { dirname, join, posix, resolve, sep } from 'node:path';
 import type { Context, InternalRunResult, Limits, RunRequest, SeamResult, TestFile } from '../contracts/internal.js';
 import { grade } from './junit.js';
 
-export type DockerRunnerOptions = { image?: string; docker?: string };
+export type DockerRunnerOptions = {
+  image?: string;
+  docker?: string;
+  /** Arguments placed before every docker subcommand (e.g. ['--host', ...]); also used by tests to drive a fake CLI. */
+  dockerArgs?: string[];
+  /** Upper bound for health checks and kill/rm cleanup calls. */
+  controlTimeoutMs?: number;
+};
 
 const DEFAULT_IMAGE = 'torquecode-runner-python:dev';
 const REPORT_MAX_BYTES = 1_048_576;
+const HEALTHY_CACHE_MS = 10_000;
+// Candidate-facing messages never carry docker's own text (socket paths, hosts, host paths).
+const SANDBOX_DOWN = 'Sandbox unavailable: the container runtime is not reachable';
+const SANDBOX_START_FAILED = 'Sandbox unavailable: the container could not be started';
 const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/;
 // Files pytest or Python would load as configuration or that would shadow the harness.
 const FORBIDDEN_NAMES = new Set(['conftest.py', 'pytest.ini', 'pyproject.toml', 'setup.cfg', 'tox.ini',
@@ -102,18 +113,23 @@ function capped(budget: number) {
 
 // Containers still running if this process exits unexpectedly. Labelled too, so
 // `docker rm -f $(docker ps -aq --filter label=torquecode.runner)` clears leftovers.
-const active = new Map<string, string>();
+const active = new Map<string, { docker: string; prefix: string[] }>();
 process.once('exit', () => {
-  for (const [name, docker] of active) spawnSync(docker, ['rm', '-f', name], { stdio: 'ignore', timeout: 5000 });
+  for (const [name, { docker, prefix }] of active) spawnSync(docker, [...prefix, 'rm', '-f', name], { stdio: 'ignore', timeout: 5000 });
 });
 
-function dockerQuiet(docker: string, args: string[]): Promise<void> {
+/** Runs a docker control command with a hard time bound; resolves with its exit code (null = failed/timed out). */
+function dockerControl(docker: string, args: string[], timeoutMs: number): Promise<number | null> {
   return new Promise(done => {
-    const child = spawn(docker, args, { stdio: 'ignore', shell: false });
-    child.once('error', () => done());
-    child.once('close', () => done());
+    const child = spawn(docker, args, { stdio: 'ignore', shell: false, timeout: timeoutMs, killSignal: 'SIGKILL' });
+    child.once('error', () => done(null));
+    child.once('close', (code, signal) => done(signal ? null : code));
   });
 }
+
+// Lines the docker CLI (not the candidate) writes; they can name sockets, hosts and host paths.
+const DOCKER_NOISE = /^(docker: |Error response from daemon|Cannot connect to the Docker daemon|error during connect|Unable to find image|WARNING: )|docker\.sock|dockerDesktopLinuxEngine|docker_engine|npipe:/i;
+const scrubDockerText = (text: string) => text.split('\n').filter(line => !DOCKER_NOISE.test(line)).join('\n');
 
 async function writeWorkspace(root: string, input: RunRequest, selected: TestFile[]) {
   const work = join(root, 'work');
@@ -142,11 +158,25 @@ async function writeWorkspace(root: string, input: RunRequest, selected: TestFil
 export function createDockerRunner(options: DockerRunnerOptions = {}) {
   const image = options.image ?? process.env.RUNNER_IMAGE ?? DEFAULT_IMAGE;
   const docker = options.docker ?? 'docker';
+  const prefix = options.dockerArgs ?? [];
+  const controlTimeoutMs = options.controlTimeoutMs ?? 10_000;
+  const control = (args: string[]) => dockerControl(docker, [...prefix, ...args], controlTimeoutMs);
+
+  // Daemon health: a success is cached briefly; a failure is never cached.
+  let healthyUntil = 0;
+  async function daemonHealthy(useCache: boolean): Promise<boolean> {
+    if (useCache && Date.now() < healthyUntil) return true;
+    const healthy = (await control(['version', '--format', '{{.Server.Version}}'])) === 0;
+    healthyUntil = healthy ? Date.now() + HEALTHY_CACHE_MS : 0;
+    return healthy;
+  }
 
   return async function runTests(input: RunRequest, context: Context): Promise<SeamResult<InternalRunResult>> {
     context.signal.throwIfAborted();
     const rejected = validateRequest(input);
     if (rejected) return unavailable(`Rejected run request: ${rejected}`);
+    if (!(await daemonHealthy(true))) return unavailable(SANDBOX_DOWN);
+    context.signal.throwIfAborted();
 
     const selected = input.tests.filter(test => input.mode === 'submit' || test.visibility === 'visible');
     if (selected.length === 0) return unavailable('Rejected run request: no tests selected');
@@ -161,8 +191,11 @@ export function createDockerRunner(options: DockerRunnerOptions = {}) {
       const { work, out } = await writeWorkspace(root, input, selected);
       if (work.includes(',') || out.includes(',')) return unavailable('Workspace path contains a comma');
       const { limits } = input;
+      // Docker writes the container id here once the container exists; outside the mounts.
+      const cidfile = join(root, 'container.id');
       const args = [
-        'run', '--rm', '--name', name, '--label', 'torquecode.runner=1', '--pull', 'never',
+        ...prefix,
+        'run', '--rm', '--name', name, '--cidfile', cidfile, '--label', 'torquecode.runner=1', '--pull', 'never',
         '--network', 'none', '--memory', `${limits.memory_mb}m`, '--memory-swap', `${limits.memory_mb}m`,
         '--cpus', String(limits.cpu_count), '--pids-limit', String(limits.pids),
         '--read-only', '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=64m',
@@ -187,8 +220,13 @@ export function createDockerRunner(options: DockerRunnerOptions = {}) {
       const outcome = await new Promise<{ code: number | null; spawnError?: Error }>(done => {
         const child = spawn(docker, args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
         started = true;
-        active.set(name, docker);
-        const kill = () => { void dockerQuiet(docker, ['kill', name]); };
+        active.set(name, { docker, prefix });
+        // Backstop: if the daemon hangs, `docker kill` can't land; kill the CLI itself so this call always ends.
+        let backstop: NodeJS.Timeout | undefined;
+        const kill = () => {
+          void control(['kill', name]);
+          backstop ??= setTimeout(() => child.kill('SIGKILL'), controlTimeoutMs);
+        };
         const timer = setTimeout(() => { timedOut = true; kill(); }, limits.wall_time_ms);
         const abort = () => { aborted = true; kill(); };
         context.signal.addEventListener('abort', abort, { once: true });
@@ -196,6 +234,7 @@ export function createDockerRunner(options: DockerRunnerOptions = {}) {
         child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
         const finish = (result: { code: number | null; spawnError?: Error }) => {
           clearTimeout(timer);
+          clearTimeout(backstop);
           context.signal.removeEventListener('abort', abort);
           done(result);
         };
@@ -204,11 +243,13 @@ export function createDockerRunner(options: DockerRunnerOptions = {}) {
       });
 
       if (aborted) throw context.signal.reason ?? new Error('Aborted');
-      if (outcome.spawnError) return unavailable(`Docker could not be started: ${outcome.spawnError.message}`);
-      // 125: docker itself failed (daemon down, image missing). 126/127: image can't run python.
-      if (!timedOut && (outcome.code === 125 || outcome.code === 126 || outcome.code === 127)) {
-        return unavailable(`Sandbox failed to start (docker exit ${outcome.code}): ${stderr.text().slice(0, 300)}`);
-      }
+      if (outcome.spawnError) return unavailable(SANDBOX_DOWN);
+      // 125: docker itself failed (daemon, image, mounts). 126/127: the image can't run python.
+      if (!timedOut && (outcome.code === 125 || outcome.code === 126 || outcome.code === 127)) return unavailable(SANDBOX_START_FAILED);
+      // No container id: docker never created the container, whatever its exit code
+      // (newer CLIs exit 1 when the daemon is unreachable). Infrastructure, not the candidate.
+      const created = await readFile(cidfile, 'utf8').then(id => id.trim().length > 0, () => false);
+      if (!created) return unavailable((await daemonHealthy(false)) ? SANDBOX_START_FAILED : SANDBOX_DOWN);
 
       let xml: string | null = null;
       try {
@@ -216,16 +257,22 @@ export function createDockerRunner(options: DockerRunnerOptions = {}) {
         if ((await stat(report)).size <= REPORT_MAX_BYTES) xml = await readFile(report, 'utf8');
       } catch { xml = null; }
 
+      // Anything not cleanly gradable could be the daemon dying mid-run rather than the
+      // candidate (os._exit, OOM, loop). Only grade it if the daemon is demonstrably healthy;
+      // an unreachable or undecidable daemon fails closed with no grade.
+      const gradable = !timedOut && xml !== null && (outcome.code === 0 || outcome.code === 1);
+      if (!gradable && !(await daemonHealthy(false))) return unavailable(SANDBOX_DOWN);
+
       const graded = grade(expectedIds, xml, outcome.code, timedOut);
       const tests = expectedIds.map(id => ({ id, ...graded.get(id)!, visibility: visibility.get(id)! }));
       return { kind: 'ok', value: {
         run_id: randomUUID(), task_id: input.task_id, mode: input.mode, tests,
         passed: tests.filter(test => test.status === 'pass').length, total: tests.length,
-        stdout: stdout.text(), stderr: stderr.text(), timed_out: timedOut,
+        stdout: stdout.text(), stderr: scrubDockerText(stderr.text()), timed_out: timedOut,
       } };
     } finally {
       // --rm removes a container that exited; this covers kill, abort and crashes.
-      if (started) await dockerQuiet(docker, ['rm', '-f', name]);
+      if (started) await control(['rm', '-f', name]);
       active.delete(name);
       await rm(root, { recursive: true, force: true });
     }

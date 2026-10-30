@@ -44,7 +44,10 @@ export const DEFAULT_MODELS: Record<Purpose, string> = {
 export const DEFAULT_MODEL_ALIAS = 'default';
 // Unknown model cost: assume the largest class (70B+ = 4 units) so we never oversubscribe.
 const CONSERVATIVE_COST = 4;
-const METADATA_RETRY_MS = 5 * 60_000;
+const METADATA_RETRY_MS = 60_000;
+const METADATA_FRESH_MS = 10 * 60_000;
+const RESPONSE_MAX_BYTES = 2 * 1_048_576;
+const METADATA_MAX_BYTES = 262_144;
 const MAX_RETRY_AFTER_MS = 20_000;
 
 const int = (value: string | undefined, fallback: number, min: number, max: number) => {
@@ -63,7 +66,8 @@ export function readFeatherlessConfig(env: NodeJS.ProcessEnv = process.env): Fea
     },
     maxConcurrency: int(env.FEATHERLESS_MAX_CONCURRENCY, 2, 1, 16),
     maxQueue: int(env.FEATHERLESS_MAX_QUEUE, 16, 0, 256),
-    requestTimeoutMs: int(env.FEATHERLESS_TIMEOUT_MS, 60_000, 100, 300_000),
+    // End-to-end bound per chat call (metadata + queue + attempts + backoff).
+    requestTimeoutMs: int(env.FEATHERLESS_TIMEOUT_MS, 120_000, 100, 300_000),
     queueTimeoutMs: 30_000,
     metadataTimeoutMs: 5_000,
     maxAttempts: 3,
@@ -155,6 +159,33 @@ export class FairLimiter {
   }
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Reads a response body up to `limit` bytes; larger bodies are cancelled and rejected. */
+async function readBounded(response: Response, limit: number): Promise<string> {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel().catch(() => {});
+      throw new FeatherlessError('malformed_response', 'Featherless response exceeds size limit');
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+function parseBody(text: string): unknown {
+  try { return JSON.parse(text); }
+  catch { throw new FeatherlessError('malformed_response', 'Featherless returned invalid JSON'); }
+}
+
 function retryAfterMs(header: string | null, now: number): number | null {
   if (!header) return null;
   const seconds = Number(header);
@@ -206,16 +237,21 @@ export function createFeatherlessClient(config: FeatherlessConfig, deps: Feather
   // timeout; each caller only races its own abort signal against them.
   async function getJson(path: string): Promise<unknown> {
     const response = await fetchImpl(`${config.baseUrl}${path}`, { headers: headers(), signal: AbortSignal.timeout(config.metadataTimeoutMs) });
-    if (!response.ok) throw new FeatherlessError(classify(response.status).category, `GET ${path} failed`, response.status);
-    return response.json();
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      throw new FeatherlessError(classify(response.status).category, `GET ${path} failed`, response.status);
+    }
+    return parseBody(await readBounded(response, METADATA_MAX_BYTES));
   }
   const untilAborted = <T>(promise: Promise<T>, signal: AbortSignal) => new Promise<T>((resolve, reject) => {
+    // Already aborted: an 'abort' listener added now would never fire.
+    if (signal.aborted) { reject(signal.reason); return; }
     const onAbort = () => reject(signal.reason);
     signal.addEventListener('abort', onAbort, { once: true });
     promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
   });
 
-  // Plan: cached on success; on failure stay at 1 in flight and retry later.
+  // Plan: cached on success; on failure stay at 1 in flight and retry after a minute.
   let planLoaded = false;
   let planPending: Promise<void> | null = null;
   let planRetryAt = 0;
@@ -223,8 +259,8 @@ export function createFeatherlessClient(config: FeatherlessConfig, deps: Feather
     if (planLoaded || now() < planRetryAt) return Promise.resolve();
     planPending ??= (async () => {
       try {
-        const plan = await getJson('/plan') as { concurrency?: unknown };
-        const units = typeof plan.concurrency === 'number' && plan.concurrency > 0 ? plan.concurrency : null;
+        const plan = await getJson('/plan');
+        const units = isRecord(plan) && typeof plan.concurrency === 'number' && plan.concurrency > 0 ? plan.concurrency : null;
         if (units === null) throw new FeatherlessError('malformed_response', 'plan has no concurrency');
         limiter.setLimits(config.maxConcurrency, units);
         planLoaded = true;
@@ -238,6 +274,9 @@ export function createFeatherlessClient(config: FeatherlessConfig, deps: Feather
     return untilAborted(planPending, signal);
   }
 
+  // Per-model cost/availability. Every entry expires, so one bad lookup never poisons a model:
+  // fresh results for 10 min; failures (including a metadata 404, which a bad User-Agent once
+  // produced) retry after a minute and meanwhile count as "unknown, conservative cost".
   type Cost = { cost: number; available: boolean; retryAt: number };
   const costs = new Map<string, Cost>();
   const costPending = new Map<string, Promise<Cost>>();
@@ -249,14 +288,13 @@ export function createFeatherlessClient(config: FeatherlessConfig, deps: Feather
       pending = (async (): Promise<Cost> => {
         let entry: Cost;
         try {
-          const meta = await getJson(`/models/${model.split('/').map(encodeURIComponent).join('/')}`) as
-            { concurrency_cost?: unknown; available_on_current_plan?: unknown };
+          const meta = await getJson(`/models/${model.split('/').map(encodeURIComponent).join('/')}`);
+          if (!isRecord(meta)) throw new FeatherlessError('malformed_response', 'model metadata is not an object');
           const cost = typeof meta.concurrency_cost === 'number' && meta.concurrency_cost > 0 ? meta.concurrency_cost : CONSERVATIVE_COST;
-          entry = { cost, available: meta.available_on_current_plan !== false, retryAt: Number.POSITIVE_INFINITY };
-        } catch (error) {
-          // 404: the model doesn't exist for this key, so refuse rather than guess.
-          const missing = error instanceof FeatherlessError && error.category === 'model_unavailable';
-          entry = { cost: CONSERVATIVE_COST, available: !missing, retryAt: now() + METADATA_RETRY_MS };
+          const available = meta.available_on_current_plan !== false;
+          entry = { cost, available, retryAt: now() + (available ? METADATA_FRESH_MS : METADATA_RETRY_MS) };
+        } catch {
+          entry = { cost: CONSERVATIVE_COST, available: true, retryAt: now() + METADATA_RETRY_MS };
         }
         costs.set(model, entry);
         costPending.delete(model);
@@ -267,48 +305,51 @@ export function createFeatherlessClient(config: FeatherlessConfig, deps: Feather
     return untilAborted(pending, signal);
   }
 
-  async function attempt(model: string, input: ChatRequest, signal: AbortSignal) {
-    const timeout = new AbortController();
-    const timer = setTimeout(() => timeout.abort(new FeatherlessError('timeout', 'Featherless request timed out')), config.requestTimeoutMs);
+  type Attempt =
+    | { value: ChatValue; usage: { prompt_tokens: number | null; completion_tokens: number | null } }
+    | { error: FeatherlessError; retryable: boolean; retryAfter: number | null };
+  const malformed = (message: string): Attempt => ({ error: new FeatherlessError('malformed_response', message), retryable: false, retryAfter: null });
+
+  /** One HTTP attempt. `signal` is the caller's abort combined with the overall deadline. */
+  async function attempt(model: string, input: ChatRequest, signal: AbortSignal): Promise<Attempt> {
+    let response: Response;
     try {
-      let response: Response;
-      try {
-        response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
-          method: 'POST', headers: headers(), signal: AbortSignal.any([signal, timeout.signal]),
-          body: JSON.stringify({ model, messages: input.messages, max_tokens: input.max_tokens, stream: false }),
-        });
-      } catch (error) {
-        if (signal.aborted) throw signal.reason;
-        if (timeout.signal.aborted) throw timeout.signal.reason;
-        return { error: new FeatherlessError('network', 'Featherless network error'), retryable: true, retryAfter: null };
-      }
-      if (!response.ok) {
-        const { category, retryable } = classify(response.status);
-        await response.body?.cancel().catch(() => {});
-        return { error: new FeatherlessError(category, `Featherless HTTP ${response.status}`, response.status), retryable,
-          retryAfter: retryAfterMs(response.headers.get('retry-after'), now()) };
-      }
-      let body: unknown;
-      try { body = await response.json(); }
-      catch {
-        if (signal.aborted) throw signal.reason;
-        if (timeout.signal.aborted) throw timeout.signal.reason;
-        return { error: new FeatherlessError('malformed_response', 'Featherless returned invalid JSON'), retryable: false, retryAfter: null };
-      }
-      const parsed = body as { model?: unknown; choices?: { message?: { content?: unknown } }[]; usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } };
-      const content = parsed.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || content.trim() === '') {
-        return { error: new FeatherlessError('malformed_response', 'Featherless reply has no content'), retryable: false, retryAfter: null };
-      }
-      const tokens = (value: unknown) => (typeof value === 'number' ? value : null);
-      return { value: { content, model: typeof parsed.model === 'string' ? parsed.model : model },
-        usage: { prompt_tokens: tokens(parsed.usage?.prompt_tokens), completion_tokens: tokens(parsed.usage?.completion_tokens) } };
-    } finally { clearTimeout(timer); }
+      response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+        method: 'POST', headers: headers(), signal,
+        body: JSON.stringify({ model, messages: input.messages, max_tokens: input.max_tokens, stream: false }),
+      });
+    } catch {
+      signal.throwIfAborted();
+      return { error: new FeatherlessError('network', 'Featherless network error'), retryable: true, retryAfter: null };
+    }
+    if (!response.ok) {
+      const { category, retryable } = classify(response.status);
+      await response.body?.cancel().catch(() => {});
+      return { error: new FeatherlessError(category, `Featherless HTTP ${response.status}`, response.status), retryable,
+        retryAfter: retryAfterMs(response.headers.get('retry-after'), now()) };
+    }
+    let body: unknown;
+    try { body = parseBody(await readBounded(response, RESPONSE_MAX_BYTES)); }
+    catch (error) {
+      signal.throwIfAborted();
+      return malformed(error instanceof FeatherlessError ? error.message : 'Featherless returned an unreadable body');
+    }
+    // Validate the whole shape before touching nested fields: null, arrays, strings and
+    // wrongly-typed members are all malformed, never an exception or a fake reply.
+    if (!isRecord(body) || !Array.isArray(body.choices) || body.choices.length === 0) return malformed('Featherless reply has no choices');
+    const choice: unknown = body.choices[0];
+    if (!isRecord(choice) || !isRecord(choice.message)) return malformed('Featherless reply has no message');
+    const content = choice.message.content;
+    if (typeof content !== 'string' || content.trim() === '') return malformed('Featherless reply has no content');
+    const usage = isRecord(body.usage) ? body.usage : {};
+    const tokens = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+    return { value: { content, model: typeof body.model === 'string' && body.model.length <= 200 ? body.model : model },
+      usage: { prompt_tokens: tokens(usage.prompt_tokens), completion_tokens: tokens(usage.completion_tokens) } };
   }
 
   async function chat(input: ChatRequest, context: Context): Promise<SeamResult<ChatValue>> {
-    const signal = context.signal;
-    signal.throwIfAborted();
+    const caller = context.signal;
+    caller.throwIfAborted();
     const requestId = randomUUID();
     const started = now();
     const base = { event: 'featherless_chat', request_id: requestId, purpose: String(input.purpose) };
@@ -324,6 +365,11 @@ export function createFeatherlessClient(config: FeatherlessConfig, deps: Feather
     const model = config.models[input.purpose];
     const meta = { ...base, model };
 
+    // requestTimeoutMs bounds the WHOLE call: metadata, queueing, every attempt and backoff.
+    const lifetime = new AbortController();
+    const deadline = started + config.requestTimeoutMs;
+    const timer = setTimeout(() => lifetime.abort(new FeatherlessError('timeout', 'Featherless request timed out')), config.requestTimeoutMs);
+    const signal = AbortSignal.any([caller, lifetime.signal]);
     let release: (() => void) | null = null;
     let attempts = 0;
     let queueWait = 0;
@@ -343,17 +389,21 @@ export function createFeatherlessClient(config: FeatherlessConfig, deps: Feather
         }
         const status = result.error.status ?? null;
         const wait = result.retryAfter ?? Math.min(8000, 500 * 2 ** (attempts - 1)) * (0.5 + random() * 0.5);
-        if (!result.retryable || attempts >= config.maxAttempts || wait > MAX_RETRY_AFTER_MS) {
+        if (!result.retryable || attempts >= config.maxAttempts || wait > MAX_RETRY_AFTER_MS || now() + wait >= deadline) {
           return fail(result.error.category, { model, attempts, queue_wait_ms: queueWait, status });
         }
         // The slot is held while backing off, so retries never add parallel pressure.
         await sleep(wait, signal);
       }
     } catch (error) {
-      if (signal.aborted) { log({ ...meta, outcome: 'aborted', attempts, latency_ms: now() - started }); throw signal.reason; }
+      if (caller.aborted) { log({ ...meta, outcome: 'aborted', attempts, latency_ms: now() - started }); throw caller.reason; }
       if (error instanceof FeatherlessError) return fail(error.category, { model, attempts, queue_wait_ms: queueWait });
-      throw error;
-    } finally { release?.(); }
+      // Anything unexpected is a controlled failure, never an escaped exception or a fake reply.
+      return fail('provider_error', { model, attempts, queue_wait_ms: queueWait, unexpected: true });
+    } finally {
+      clearTimeout(timer);
+      release?.();
+    }
   }
 
   return { chat, limiter, config };
