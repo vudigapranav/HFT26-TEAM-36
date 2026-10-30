@@ -40,7 +40,8 @@
     ".githooks/*",
     "scripts/*",
     ".gitignore",
-    ".env.example"
+    ".env.example",
+    "src/backend/uv.lock"
   ],
   "rithvik": [
     "src/backend/runner/*",

@@ -1,0 +1,19 @@
+{
+  "name": "torquecode",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24.22.1 <27"
+  },
+  "scripts": {
+    "build": "pnpm --filter @torquecode/contracts build && pnpm --filter @torquecode/backend build",
+    "typecheck": "pnpm --filter @torquecode/contracts build && pnpm --filter @torquecode/backend typecheck",
+    "test": "pnpm --filter @torquecode/contracts build && pnpm --filter @torquecode/backend test && pnpm test:python",
+    "dev": "pnpm --filter @torquecode/contracts build && pnpm --filter @torquecode/backend dev",
+    "smoke:seams": "pnpm --filter @torquecode/contracts build && pnpm --filter @torquecode/backend smoke:seams",
+    "test:seed1": "pnpm --filter @torquecode/contracts build && pnpm --filter @torquecode/backend test:seed1",
+    "openapi": "pnpm --filter @torquecode/contracts build && pnpm --filter @torquecode/backend openapi",
+    "ownership:check": "node scripts/check-ownership.mjs",
+    "test:python": "uv run --project src/backend --locked pytest src/backend/tests/runner/test_reporter.py -q -p no:cacheprovider"
+  }
+}
