@@ -60,3 +60,41 @@ Measured 2026-10-31 from this laptop, key read from `.env` (never logged).
   - assistant = `Qwen/Qwen3-30B-A3B-Instruct-2507`
   - Drop Qwen2.5-Coder-32B: slow, high variance, about 5× the price, and double the concurrency cost.
 - Not measured yet: long generation prompts, parallel calls and 429 behaviour (R4 queue tests). These are tiny prompts, so the latencies are lower bounds.
+
+## 2026-10-31 00:27 — R2 — Docker runTests seam (`runner/dockerRunner.ts`)
+- Changed:
+  - `src/backend/runner/dockerRunner.ts`: `createDockerRunner({ image?, docker? })` and the default `runTestsInDocker`. Exact `Ports['runTests']` type: `(RunRequest, Context) => Promise<SeamResult<InternalRunResult>>`.
+  - `src/backend/runner/junit.ts`: strict JUnit reader and fail-closed `grade()`.
+  - `src/backend/tests/runner/docker-runner.test.ts`: 32 tests (19 unit tests, 13 against real Docker).
+- How it runs:
+  - Validates the request: safe relative paths only; no `conftest.py`, `pytest.ini`, `pyproject.toml`, `setup.cfg`, `tox.ini`, `sitecustomize.py`, `*.pth`, `pytest`/`_pytest`/`pluggy` shadows, or `__pycache__`; no files in test dirs; no case-insensitive collisions; limits within bounds; at most 2 MiB.
+  - Writes a fresh temp workspace with candidate files, trusted tests, a trusted `pytest.ini` and empty `conftest.py` files.
+  - `spawn('docker', args)` with no shell, using the R0 flags plus `--rm --pull never --label torquecode.runner=1`. Limits come from `RunRequest.limits`; seed task 1 uses 5 s, 128 MB, 1 CPU, 32 pids, 64 KB.
+  - Runs `python -I -B -m pytest -q -p no:cacheprovider -c /work/pytest.ini --rootdir /work --junitxml /out/results.xml <selected tests>`. `-I` means candidate files can't shadow pytest.
+  - Run mode = visible tests only; submit = visible + hidden.
+  - At the wall-clock deadline: `docker kill`, all tests `timeout`. Afterwards `docker rm -f` and the temp dir is removed (in `finally`), plus a process-exit cleanup hook.
+  - stdout and stderr are each capped at `output_bytes`, streamed and drained, never fully buffered. The JUnit report is limited to 1 MiB.
+- Grading is fail-closed:
+  - Every expected test id gets a status. Missing, malformed or oversized report, skipped tests, and pytest exit codes other than 0/1 all count as `error`.
+  - Nothing passes unless pytest's exit code agrees with the report. This catches the R0 `forge_report` attack as long as the candidate doesn't also force exit code 0.
+- Startup failures (Docker missing or down, image missing: exit 125/126/127) and rejected requests return `{ kind: 'unavailable', code: 'SANDBOX_UNAVAILABLE' }` and never throw. An abort signal kills the container and rethrows.
+- Test evidence (Windows 11, Docker 29.8.0, image `torquecode-runner-python:dev`):
+  - `npx tsc --noEmit -p tsconfig.json` (in src/backend): OK.
+  - `npx vitest run --config vitest.config.ts tests/runner/docker-runner.test.ts`: **32 passed, 0 failed, 0 skipped**, 28 s. Docker tests skip cleanly if the image or daemon is missing.
+  - Seed task 1: reference 5/5 twice. The starter fails exactly `f2p_ids` and passes `p2p_ids`.
+  - Run mode returns only the 2 visible tests. `publicRun(submit)` contains no hidden ids or hidden test source, and hidden is `{passed: 2, total: 3}`.
+  - Hostile cases: infinite loop → timeout and container removed; huge output capped at 64 KB and graded `fail`; network/DNS/write probes pass inside the container; deleting tests has no effect (4 tests still graded); `sys.exit(0)`, `os._exit(0)`, forged report and syntax error all give 0 passed / all `error`; memory bomb contained; missing image or missing docker binary → `SANDBOX_UNAVAILABLE`.
+  - Whole backend suite: 71 passed, **5 failed, all in Karthik's existing tests, caused by this Windows checkout, not R2** (no R2 change touches them):
+    - 4 fail with "Trusted seed artifacts changed": `core.autocrlf=true` checks the seed files out with CRLF, and the pinned digest only matches the LF version (verified).
+    - 1 times out: `process.kill(-pid)` in `runner/local/process.ts` is POSIX-only.
+- Seams/contracts affected: none changed. Uses `RunRequest`, `InternalRunResult`, `Limits`, `TestFile`, `SeamResult` and `Context` from `contracts/internal.ts` as merged in K1 (PR 6).
+- Teammates should know:
+  - Karthik, wiring (I don't edit `api/`): in `createDevPorts()` / production ports, use
+    `import { runTestsInDocker } from '../runner/dockerRunner.js';`
+    `runTests: process.env.RUNNER === 'docker' ? runTestsInDocker : runSeedTests`
+    The image is built with `docker build -t torquecode-runner-python:dev src/backend/runner/images/python`; override it with `RUNNER_IMAGE`. A result of `unavailable` must map to an API error, never a grade.
+  - Karthik: the API must still check candidate edits against the task's editable allow-list before building `RunRequest.files`. The runner blocks config and test-path files but can't know which task files are editable.
+  - Karthik: the contract has no "invalid request" code, so rejected requests use `SANDBOX_UNAVAILABLE` with a message starting `Rejected run request:`. Consider adding `INVALID_REQUEST` to `Unavailable['code']`.
+  - Karthik: add `* text=auto eol=lf` (or at least `src/backend/seed_bank/** eol=lf`) to a `.gitattributes`, so seed digests match on Windows clones. `tsconfig.json` `include` lists only `runner/local`; `runner/*.ts` gets compiled today only because tests import it.
+  - Known limitation (R3): candidate code shares the interpreter with the tests, so it can still read hidden test files at runtime and, by forcing exit code 0 as well, forge a consistent report. This is not production-grade isolation. `/out` is a bind mount without a size cap.
+- Next: R4 (Featherless client). R3 hardening after the checkpoint.
