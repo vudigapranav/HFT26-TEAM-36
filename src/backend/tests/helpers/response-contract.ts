@@ -14,6 +14,7 @@ export function checkResponseContract(method: string, url: string, response: Res
     : path === '/portfolio' ? PortfolioResponse
     : path === '/onboarding-quiz' ? method === 'GET' ? QuizResponse : FocusLaneResponse
     : path === '/assessments' || /^\/assessments\/[^/]+\/status$/.test(path) ? AssessmentState
+    : /^\/assessments\/[^/]+\/tier\/upgrade$/.test(path) ? AssessmentState
     : /^\/assessments\/[^/]+\/tasks\/[^/]+$/.test(path) ? Task
     : /\/(run|submit)$/.test(path) ? RunResult
     : /\/hint$/.test(path) ? HintResponse

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { TIER_ORDER } from './tier-policy.js';
+import { TIER_ORDER, finalSubmitPassed, nextTier } from './tier-policy.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Type } from 'typebox';
 import { ApiError, AssessmentState, EventsRequest, FocusLaneResponse, HintResponse, PortfolioResponse, QuizAnswers, QuizResponse, Report, RunFilesRequest, RunResult, Task, TaskFilesRequest } from '@torquecode/contracts';
@@ -41,7 +41,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   });
   const user = (request: FastifyRequest) => identities.get(request)!;
   const emit = (record: AssessmentRecord, type: Event['type'], payload: Event['payload'], ts = now(), source: Event['source'] = 'server') => {
-    record.events.push({ session_id: record.session.id, task_id: seed.task_id, ts: new Date(ts).toISOString(), type, source, payload });
+    record.events.push({ session_id: record.session.id, task_id: record.task.task_id, ts: new Date(ts).toISOString(), type, source, payload });
   };
   function checkedFiles(record: AssessmentRecord, files: File[]): File[] {
     const editable = record.task.files.filter(file => file.editable);
@@ -75,6 +75,31 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       if (options.runner_status?.runner === 'isolated') options.runner_status.available = true;
       record.runs.push(result);
       emit(record, mode, { run_id: result.run_id, files_hash }, ts);
+
+      // K10: unlocking is earned by a fully passing final submission.
+      // Never invent an unavailable next-tier task.
+      if (
+        mode === 'submit' &&
+        record.session.status === 'active' &&
+        now() < Date.parse(record.session.expires_at) &&
+        finalSubmitPassed(record.runs, record.task.task_id)
+      ) {
+        const next = nextTier(record.session.current_tier);
+
+        if (
+          next &&
+          record.tier_work?.[next] &&
+          !record.unlocked_tiers?.includes(next)
+        ) {
+          record.unlocked_tiers ??= ['novice'];
+          record.unlocked_tiers.push(next);
+          emit(record, 'tier_unlocked', {
+            from: record.session.current_tier,
+            to: next,
+          }, ts);
+        }
+      }
+
       return result;
     })();
     record.operation = operation;
@@ -106,7 +131,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   async function owned(request: FastifyRequest, task = false) {
     const params = request.params as { id: string; taskId?: string };
     const record = store.assessments.get(params.id);
-    if (!record || record.session.user_id !== user(request) || (task && params.taskId !== seed.task_id)) throw new HttpProblem(404, 'NOT_FOUND');
+    if (!record || record.session.user_id !== user(request) || (task && params.taskId !== record.task.task_id)) throw new HttpProblem(404, 'NOT_FOUND');
     await expire(record);
     return record;
   }
@@ -116,7 +141,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     if (record.events.length >= 900) throw new HttpProblem(429, 'EVENT_LIMIT');
   };
   const state = (record: AssessmentRecord) => ({
-    assessment_id: record.session.id, report_id: `report-${record.session.id}`, task_id: seed.task_id,
+    assessment_id: record.session.id, report_id: `report-${record.session.id}`, task_id: record.task.task_id,
     current_tier: record.session.current_tier, status: record.session.status,
     unlocked_tiers: record.unlocked_tiers ?? ['novice'],
     tiers: TIER_ORDER.map(tier => {
@@ -187,6 +212,38 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     return reply.code(201).send(state(record));
   });
   app.get('/assessments/:id/status', { schema: { response: { 200: AssessmentState, ...errors } } }, async request => state(await owned(request)));
+  app.post('/assessments/:id/tier/upgrade', {
+    schema: { body: empty, response: { 200: AssessmentState, ...errors } },
+  }, async request => {
+    const record = await owned(request);
+    active(record);
+
+    const from = record.session.current_tier;
+    const to = nextTier(from);
+
+    if (!to) throw new HttpProblem(409, 'NO_HIGHER_TIER');
+    if (!record.unlocked_tiers?.includes(to))
+      throw new HttpProblem(409, 'TIER_LOCKED');
+
+    const nextWork = record.tier_work?.[to];
+    if (!nextWork) throw new HttpProblem(409, 'TIER_UNAVAILABLE');
+
+    record.tier_work ??= {};
+    record.tier_work[from] = {
+      task: record.task,
+      files: structuredClone(record.files),
+      hint_level: record.hint_level,
+    };
+
+    record.task = structuredClone(nextWork.task);
+    record.files = structuredClone(nextWork.files);
+    record.hint_level = nextWork.hint_level;
+    record.session.current_tier = to;
+
+    emit(record, 'tier_upgraded', { from, to });
+    return state(record);
+  });
+
   app.get('/assessments/:id/tasks/:taskId', { schema: { response: { 200: Task, ...errors } } }, async request => {
     const record = await owned(request, true);
     return publicTask({ ...record.task, files: record.files });
@@ -210,7 +267,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     record.hint_pending = true;
     try {
     emit(record, 'hint_request', { level });
-    const hint = real(await ports.nextHint({ task_id: seed.task_id, level }, { signal: AbortSignal.any([closing.signal, AbortSignal.timeout(5000)]) }));
+    const hint = real(await ports.nextHint({ task_id: record.task.task_id, level }, { signal: AbortSignal.any([closing.signal, AbortSignal.timeout(5000)]) }));
     if (hint.level !== level) throw new Error('Hint result mismatch');
     record.hint_level = level; emit(record, 'hint_served', { level });
     return hint;
@@ -218,7 +275,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   });
   app.post<{ Body: { events: { task_id: string; client_ts: string; type: 'tab_hidden' | 'tab_visible' | 'copy' | 'paste'; payload: { size?: number } }[] } }>('/assessments/:id/events', { schema: { body: EventsRequest, response: { 200: ok, ...errors } } }, async request => {
     const record = await owned(request); active(record);
-    if (request.body.events.some(e => e.task_id !== seed.task_id)) throw new HttpProblem(400, 'INVALID_TASK');
+    if (request.body.events.some(e => e.task_id !== record.task.task_id)) throw new HttpProblem(400, 'INVALID_TASK');
     if (record.events.length + request.body.events.length > 900) throw new HttpProblem(429, 'EVENT_LIMIT');
     for (const event of request.body.events) emit(record, event.type, { ...event.payload, client_ts: event.client_ts }, now(), 'client');
     return { ok: true };

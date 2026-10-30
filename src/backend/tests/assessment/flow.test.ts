@@ -319,3 +319,99 @@ it('K10 reports unavailable tiers without inventing tasks', async () => {
     },
   ]);
 });
+
+it('K10 rejects premature upgrades and preserves novice state', async () => {
+  const { call, seed, store } = await setup();
+
+  await call('POST', '/portfolio', portfolio);
+  const created = await call('POST', '/assessments', {});
+  const id = created.json().assessment_id;
+
+  const denied = await call(
+    'POST',
+    `/assessments/${id}/tier/upgrade`,
+    {},
+  );
+
+  expect(denied.statusCode).toBe(409);
+  expect(denied.json().error.code).toBe('TIER_LOCKED');
+
+  const status = await call('GET', `/assessments/${id}/status`);
+  expect(status.json()).toMatchObject({
+    current_tier: 'novice',
+    task_id: seed.task_id,
+    unlocked_tiers: ['novice'],
+  });
+
+  expect(
+    store.assessments.get(id)!.events.filter(
+      event => event.type === 'tier_upgraded',
+    ),
+  ).toHaveLength(0);
+
+  const foreign = await call(
+    'POST',
+    `/assessments/${id}/tier/upgrade`,
+    {},
+    'bob',
+  );
+  expect(foreign.statusCode).toBe(404);
+});
+
+it('K10 unlocks and upgrades to an available adept task', async () => {
+  const { call, seed, store } = await setup();
+
+  await call('POST', '/portfolio', portfolio);
+  const created = await call('POST', '/assessments', {});
+  const id = created.json().assessment_id;
+  const record = store.assessments.get(id)!;
+
+  // Synthetic test fixture only; no production task is invented.
+  const adept = structuredClone(seed);
+  adept.task_id = 'test-adept-task';
+  adept.tier = 'adept';
+  record.tier_work!.adept = {
+    task: adept,
+    files: structuredClone(adept.files),
+    hint_level: 0,
+  };
+
+  const base = `/assessments/${id}`;
+  expect((await call('POST', `${base}/tier/upgrade`, {}))
+    .statusCode).toBe(409);
+
+  const failed = await call('POST',
+    `${base}/tasks/${seed.task_id}/submit`, {});
+  expect(failed.json().passed).toBeLessThan(failed.json().total);
+  expect((await call('GET', `${base}/status`))
+    .json().unlocked_tiers).toEqual(['novice']);
+
+  const passed = await call('POST',
+    `${base}/tasks/${seed.task_id}/submit`,
+    { files: seed.reference_files });
+  expect(passed.statusCode).toBe(200);
+  expect(passed.json().passed).toBe(5);
+  expect(passed.json().total).toBe(5);
+
+  const status = await call('GET', `${base}/status`);
+  expect(status.json().unlocked_tiers).toEqual(['novice', 'adept']);
+  expect(status.json().current_tier).toBe('novice');
+  expect(record.events.filter(e => e.type === 'tier_unlocked'))
+    .toHaveLength(1);
+
+  const upgrade = await call('POST', `${base}/tier/upgrade`, {});
+  expect(upgrade.statusCode).toBe(200);
+  expect(upgrade.json()).toMatchObject({
+    current_tier: 'adept',
+    task_id: 'test-adept-task',
+  });
+
+  const task = await call('GET',
+    `${base}/tasks/test-adept-task`);
+  expect(task.statusCode).toBe(200);
+  expect(task.json().tier).toBe('adept');
+  expect(record.tier_work!.novice?.files)
+    .toEqual(seed.reference_files);
+  expect(record.events.filter(e => e.type === 'tier_upgraded'))
+    .toHaveLength(1);
+});
