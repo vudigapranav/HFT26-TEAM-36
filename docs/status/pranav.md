@@ -61,3 +61,9 @@ Newest entries at the bottom. Written by `/ship`.
 - Changed: docs/reviews/2026-10-31-integration-attack.md (update + finding 7)
 - Teammates should know: Rithvik + Karthik — read finding 7 and fix before the demo (a closed Docker Desktop currently turns every run into a graded 0/2 instead of 503). Attack suite now 39/39; journey 17/17; 87 tests + 15 DB tests pass on main.
 - Karthik: pnpm-workspace.yaml still needs "- src/frontend" for Akshit.
+
+## 2026-10-31 03:00 — P9 — submission README
+- Changed: README.md (replaces the starter template: problem, solution, how it works, architecture from context §9, real-vs-next table, setup, security/integrity design, honest limitations, team PAARK roles, demo link placeholder). Docs only.
+- Seams/contracts affected: none
+- Teammates should know: the "What's real today" table lists only what's merged on main @ 6793cee. When K10/K7/K5/K6/R3/R6/frontend merge, update that table and the "In progress" line. deploy/README.md is linked but doesn't exist yet. Rithvik, please create it in R6. Demo/live URLs are placeholders. No test counts or performance numbers are claimed.
+- Next: merge P6–P9 PRs; review K10.
