@@ -85,3 +85,68 @@ describe('buildReport — hardening (found by fuzzing)', () => {
     expect(Value.Check(Report, r)).toBe(true);
   });
 });
+
+// P11 — question-set unlock rule (context §5): only tasks of tiers the candidate reached count.
+describe('buildReport — only available question sets count (P11)', () => {
+  const master = mkTask('mas', 'master', ['sliding_window']);
+  const all = [novice, adept, master];
+  const at = (current_tier: Session['current_tier']): Session => ({ ...session, current_tier });
+
+  it('current_tier novice → only the novice row; adept/master tasks do not change the score', () => {
+    const events = [run('nov', 10, 'a', 3), submit('nov', 100, 4)];
+    const r = buildReportValue({ session: at('novice'), tasks: all, runs, events });
+    expect(Value.Check(Report, r)).toBe(true);
+    expect(r.tasks.map(t => t.task_id)).toEqual(['nov']);
+    expect(r.final_score).toBe(80); // novice-only: 4/5 scaled to 100 (Q4)
+    expect(r.final_score).toBe(buildReportValue({ session: at('novice'), tasks: [novice], runs, events }).final_score);
+    expect(r.focus_areas.join(' ')).not.toMatch(/hashing|two pointers|sliding window/);
+    expect(r.outcome).toContain('Solved 0 of 1 task(s)');
+    expect(r.outcome).toContain('Unlocked 0 of 2 further question sets.');
+  });
+
+  it('current_tier adept → novice + adept rows; master excluded', () => {
+    const events = [run('nov', 10, 'a', 3), submit('nov', 100, 5), run('ade', 200, 'b', 3), submit('ade', 300, 5)];
+    const r = buildReportValue({ session: at('adept'), tasks: all, runs, events });
+    expect(Value.Check(Report, r)).toBe(true);
+    expect(r.tasks.map(t => t.task_id)).toEqual(['nov', 'ade']);
+    expect(r.final_score).toBe(100);
+    expect(r.focus_areas.join(' ')).not.toContain('sliding window');
+    expect(r.outcome).toContain('Solved 2 of 2 task(s)');
+    expect(r.outcome).toContain('Unlocked 1 of 2 further question sets.');
+  });
+
+  it('tier_unlocked / tier_upgraded events are honoured even if current_tier lags', () => {
+    const events = [submit('nov', 100, 5), ev('nov', 'tier_unlocked', 110, { tier: 'adept' }), ev('ade', 'tier_upgraded', 120, { tier: 'master' })];
+    const r = buildReportValue({ session: at('novice'), tasks: all, runs, events });
+    expect(Value.Check(Report, r)).toBe(true);
+    expect(r.tasks.map(t => t.task_id)).toEqual(['nov', 'ade', 'mas']);
+    expect(r.outcome).toContain('Unlocked 2 of 2 further question sets.');
+  });
+
+  it('malformed tier events are ignored', () => {
+    const events = [submit('nov', 100, 5), ev('nov', 'tier_unlocked', 110, { tier: 'grandmaster' }), ev('nov', 'tier_upgraded', 120, {})];
+    const r = buildReportValue({ session: at('novice'), tasks: all, runs, events });
+    expect(r.tasks.map(t => t.task_id)).toEqual(['nov']);
+  });
+
+  it('available but unattempted adept task still counts toward correctness (it was offered)', () => {
+    const events = [run('nov', 10, 'a', 3), submit('nov', 100, 5)];
+    const r = buildReportValue({ session: at('adept'), tasks: all, runs, events });
+    expect(r.tasks.map(t => t.task_id)).toEqual(['nov', 'ade']);
+    expect(r.final_score).toBe(50); // no attempted AI-tier task → scaled: mean(1, 0) × 100
+    expect(Value.Check(Report, r)).toBe(true);
+  });
+});
+
+
+describe('buildReport — K10 unlock event payload', () => {
+  it('tier_upgraded { unlocks_used } counts as reaching that tier rank', async () => {
+    const { highestTierRank } = await import('../../scoring/report.js');
+    const ev = (type: Event['type'], payload: Record<string, unknown>) => ({ type, payload });
+    expect(highestTierRank({ current_tier: 'novice' }, [ev('tier_upgraded', { unlocks_used: 1 })])).toBe(1);
+    expect(highestTierRank({ current_tier: 'novice' }, [ev('tier_upgraded', { unlocks_used: 2 })])).toBe(2);
+    expect(highestTierRank({ current_tier: 'novice' }, [ev('tier_upgraded', { unlocks_used: 9 })])).toBe(2);
+    expect(highestTierRank({ current_tier: 'novice' }, [ev('tier_upgraded', { unlocks_used: 'x' })])).toBe(0);
+    expect(highestTierRank({ current_tier: 'adept' }, [ev('tier_unlocked', { tier: 'master' })])).toBe(2);
+  });
+});

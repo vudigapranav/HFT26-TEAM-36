@@ -103,6 +103,18 @@ Newest entries at the bottom. Written by `/ship`.
 - Merged: PR #29 (R3 split-container grading), PR #30 (K7 Adept+Master seeds, R3-compatible, + Aryan's pitch drafts), PR #31 (pitch facts), PR #32 (rule change).
 - Teammates should know: **Karthik** — use docs/prompts/K10_Unlock_Change.md for K10 and update BACKEND_DECISIONS (Q1/Q3 locked). **Akshit** — no level names on the coding screen; only an "Unlock next questions" button driven by `unlock_available`. **Rithvik** — please run the Adept/Master seeds once on real Docker. Everyone: `git pull` + start a fresh Claude Code session to load the new CLAUDE.md.
 
+## 2026-10-31 03:45 — P11 — report + claims follow the question-set unlock rule
+- Changed: src/backend/scoring/report.ts, src/backend/scoring/claims.ts, src/backend/tests/scoring/report.test.ts (+5 tests), src/backend/tests/scoring/claims.test.ts (+3 tests, existing calls updated).
+- Report: a task counts only if its tier was reached. "Reached" is the highest of session.current_tier and any tier named in a tier_unlocked / tier_upgraded event payload `{ tier }`; malformed tiers are ignored. Locked-tier tasks get no row and don't affect correctness, focus areas or outcome. An offered-but-untouched available task still counts as 0 (it was offered). The Q4 novice-only scaling and AIE rules are unchanged. The outcome now ends with "Unlocked N of 2 further question sets." New exports: highestTierRank, MAX_UNLOCKS.
+- Claims: signature is now claimsVsDemonstrated(profile, tasks, rows, attempted: ReadonlySet<string>), plus a new attemptedTaskIds(events) (≥1 run or submit). An unattempted task never counts as tested, so an attempted lower tier beats an unattempted higher one.
+- Seams/contracts affected: none changed. buildReport's signature is unchanged.
+- Teammates should know: **Karthik (K10)** — please (1) pass ALL session tasks (every tier) to buildReport; the report filters them. (2) On each unlock set session.current_tier to the new tier AND log a server event `tier_upgraded` with payload `{ tier: 'adept' | 'master' }` (either is enough; both is safest). (3) The earlier P8 request still stands, with one change to the call line: add to Report in contracts/public.ts
+  `claims: Type.Optional(Type.Array(object({ topic: Topic, tested_by: Type.Union([Id, Type.Null()]), demonstrated: Type.Union([Type.Boolean(), Type.Null()]) }), { maxItems: 19 })),`
+  plus an optional `profile?: CandidateProfile` on the buildReport seam input. The line I'll add to buildReportValue is now
+  `...(input.profile ? { claims: claimsVsDemonstrated(input.profile, tasks, rows.map(x => x.row), attemptedTaskIds(events)) } : {}),`
+  No separate "unlocked sets" contract field is needed; the outcome text carries it. Ask me if the frontend wants a number.
+- Checks: tests written first (8 failed before the change, all pass after). pnpm typecheck passed; pnpm test 250 passed / 46 skipped (Docker + PostgreSQL not available here) + 9 Python passed; ownership check below.
+- Next: wire claims once the contract lands.
 ## 2026-10-31 04:05 — P12 — submission readiness
 - Changed: README.md, docs/demo/PITCH_FACTS.md, docs/demo/DEMO_SCRIPT.md, scripts/pre-submit-check.sh (new). Docs + script only.
 - README: Demo video / Live URL / "How to run the demo" → deploy/README.md placeholders at the top. "What's real today" checked at 462c530: R3 split grading, K7 seeds (task files, not yet served), R5-live, unlock rule (decided; API flow pending K10). K10, R6 and frontend are not merged, so they stay "in progress". The sandbox and limitations text now reflects R3. No 15/20/25 wording remains.
