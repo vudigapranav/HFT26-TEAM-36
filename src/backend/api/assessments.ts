@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { TIER_ORDER, finalSubmitPassed, nextTier } from './tier-policy.js';
+import { TIER_ORDER, allQuestionsSubmitted, nextTier } from './tier-policy.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Type } from 'typebox';
 import { ApiError, AssessmentState, EventsRequest, FocusLaneResponse, HintResponse, PortfolioResponse, QuizAnswers, QuizResponse, Report, RunFilesRequest, RunResult, Task, TaskFilesRequest } from '@torquecode/contracts';
@@ -111,7 +111,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
         mode === 'submit' &&
         record.session.status === 'active' &&
         now() < Date.parse(record.session.expires_at) &&
-        finalSubmitPassed(record.runs, record.task.task_id)
+        allQuestionsSubmitted([record.task.task_id], record.runs)
       ) {
         const next = nextTier(record.session.current_tier);
 
@@ -268,6 +268,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     record.files = structuredClone(nextWork.files);
     record.hint_level = nextWork.hint_level;
     record.session.current_tier = to;
+
 
     emit(record, 'tier_upgraded', { from, to });
     return state(record);

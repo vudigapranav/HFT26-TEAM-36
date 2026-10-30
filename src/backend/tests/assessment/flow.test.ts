@@ -384,7 +384,7 @@ it('K10 unlocks and upgrades to an available adept task', async () => {
     `${base}/tasks/${seed.task_id}/submit`, {});
   expect(failed.json().passed).toBeLessThan(failed.json().total);
   expect((await call('GET', `${base}/status`))
-    .json().unlocked_tiers).toEqual(['novice']);
+    .json().unlocked_tiers).toEqual(['novice', 'adept']);
 
   const passed = await call('POST',
     `${base}/tasks/${seed.task_id}/submit`,

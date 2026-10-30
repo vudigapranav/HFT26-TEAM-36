@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { InternalRunResult } from '../../contracts/internal.js';
 import {
-  TIER_BUDGET_SECONDS,
   SESSION_BUDGET_SECONDS,
   nextTier,
-  finalSubmitPassed,
+  allQuestionsSubmitted,
 } from '../../api/tier-policy.js';
 
 function makeRun(
@@ -29,56 +28,47 @@ function makeRun(
   };
 }
 
-describe('K10 tier policy', () => {
-  it('allocates exactly 60 minutes', () => {
-    expect(TIER_BUDGET_SECONDS).toEqual({
-      novice: 900,
-      adept: 1200,
-      master: 1500,
-    });
+describe('K10 session policy', () => {
+  it('uses one 60-minute session', () => {
     expect(SESSION_BUDGET_SECONDS).toBe(3600);
   });
 
-  it('progresses without skipping tiers', () => {
+  it('supports at most two forward unlocks', () => {
     expect(nextTier('novice')).toBe('adept');
     expect(nextTier('adept')).toBe('master');
     expect(nextTier('master')).toBeNull();
   });
+});
 
-  it('unlocks only after all visible and hidden tests pass', () => {
-    expect(finalSubmitPassed(
-      [makeRun('submit', ['pass', 'pass', 'pass'])],
-      'task-novice',
+describe('K10 attempt-based unlocking', () => {
+  const failed = makeRun('submit', ['fail', 'pass']);
+  const another = {
+    ...makeRun('submit', ['fail']),
+    task_id: 'task-adept',
+  };
+
+  it('counts an incorrect submission as an attempt', () => {
+    expect(allQuestionsSubmitted(['task-novice'], [failed]))
+      .toBe(true);
+  });
+
+  it('requires every question in the set to be submitted', () => {
+    expect(allQuestionsSubmitted(
+      ['task-novice', 'task-adept'], [failed]
+    )).toBe(false);
+
+    expect(allQuestionsSubmitted(
+      ['task-novice', 'task-adept'], [failed, another]
     )).toBe(true);
+  });
 
-    expect(finalSubmitPassed(
-      [makeRun('submit', ['pass', 'fail'])],
-      'task-novice',
+  it('does not count Run as Submit', () => {
+    expect(allQuestionsSubmitted(
+      ['task-novice'], [makeRun('run', ['pass'])]
     )).toBe(false);
   });
 
-  it('does not unlock from an ordinary run', () => {
-    expect(finalSubmitPassed(
-      [makeRun('run', ['pass', 'pass'])],
-      'task-novice',
-    )).toBe(false);
-  });
-
-  it('uses the final submission, not an earlier pass', () => {
-    expect(finalSubmitPassed([
-      makeRun('submit', ['pass', 'pass']),
-      makeRun('submit', ['pass', 'fail']),
-    ], 'task-novice')).toBe(false);
-  });
-
-  it('rejects empty or incomplete grading results', () => {
-    expect(finalSubmitPassed(
-      [makeRun('submit', [])],
-      'task-novice',
-    )).toBe(false);
-
-    expect(finalSubmitPassed([
-      { ...makeRun('submit', ['pass']), passed: 2, total: 2 },
-    ], 'task-novice')).toBe(false);
+  it('rejects empty question sets', () => {
+    expect(allQuestionsSubmitted([], [failed])).toBe(false);
   });
 });
