@@ -11,7 +11,7 @@ This file distinguishes implementation, executed verification, integration readi
 | K2 database/login | Published as 1a8d9c1, merged by the team in PR #9 (edeb1fb) | K2 checks passed; Karthik reports 9/9 real PostgreSQL auth tests passed in host terminal. Current follow-up checks are in the latest entry below. |
 | K3 sessions/timer/tiers | Seed checkpoint routes, in-memory store, autosave and server deadline implemented in follow-up branch | Tier policy stays OPEN-Q1; general candidate execution requires Rithvik’s runner |
 | K4 complete API/background jobs | K4-lite intake/quiz/run/submit/hint/report wiring implemented in follow-up branch | Full K4, generation jobs and assistant remain unimplemented |
-| K5 validation engine | Not started | Seed checks are not the complete validation engine |
+| K5 validation engine | Merged in PR #44; receipt honesty follow-up on karthik/k5-receipts | Receipt scope and Master performance naming clarified; current evidence below |
 | K6 generation pipeline | Not started | No live Featherless call or generated task tested |
 | K7 Adept/Master seeds | Not started | Novice seed only in K1 |
 | K8 end-to-end integration | Not started | Shared seam smoke is not the full assessment journey |
@@ -184,3 +184,11 @@ Finalize integrated tests, documentation audit, pre-push hook and PR to vudigapr
 - Verification: 256 backend tests and 9 isolated PostgreSQL auth tests passed before final AI-response hardening; final focused tests and build checked separately.
 - Integration: review against latest main and coordinate report compatibility with Pranav. No rebase or merge performed.
 - Next: PR review, then K5 validation engine.
+
+## 2026-10-31 04:40 IST — K5 — honest validation receipts
+
+- Changed: validation receipts explicitly state that no machine-readable statement examples or brute-force oracle are declared. The differential gate describes only reference determinism across three runs; it claims no randomized oracle comparison. Documented Master test-ID convention `/performance|perf|large_window/i` and its actual scope in BACKEND_DECISIONS.md.
+- Seams/contracts affected: none. K6 must supply and execute a supported oracle before advertising differential validation; existing private task models do not declare examples or an oracle.
+- Verification: new receipt regression reproduced the old misleading examples reason before the fix. Parent session ran pnpm typecheck and pnpm test: 277 TypeScript tests passed, 55 skipped (Docker/PostgreSQL-dependent); 4 real Python reporter tests passed. The separate auth harness skipped its 9 tests because initdb hit sandbox shmget permissions. No fresh Docker/PostgreSQL execution is claimed. Added negative regression rejects Master tasks with no named performance test.
+- Teammates should know: K10 (#42) and original K5 (#44) are already merged. This follow-up changes only receipt reasons, relevant documentation, and regression tests. No validation threshold, sandbox boundary, teammate implementation, or grading behavior is relaxed.
+- Next: publish the dedicated receipt PR for Pranav's review, then K11 PostgreSQL persistence and K8 integration in that order. No merge by this agent.

@@ -373,3 +373,35 @@ Base: `rithvik/k7-docker-check` (PR 39) on origin/main `462c530`. Branch `rithvi
   - **K10 (Karthik): not started.** No `karthik/k10` branch exists, and `api/wiring.ts` still lacks `chat`, `assistantReply` and the generic `nextHint`. The unlock and assistant steps of the journey can't run. A missing `FEATHERLESS_API_KEY` can't break anything yet, because nothing in the running API reads it.
   - **Backup screen recording:** I can't record the screen. Rithvik records it on the demo machine.
   - The journey hits the per-IP auth rate limiter after several runs in a few minutes (`register` fails, now reported with its HTTP status). That's expected behaviour.
+
+## 2026-10-31 04:34 — R9 — runner admission control
+Base: origin/main `5545766` (K10 PR 42 merged). Branch `rithvik/runner-admission`. Only `runner/dockerRunner.ts`, runner tests and the fake CLI fixture changed.
+- **Problem:** every Run/Submit starts two containers (worker and grader). Nothing limited how many operations ran at once, so a burst of requests could exhaust the demo machine or the VM.
+- **Change:** `RunnerAdmission`, with a single process-wide instance `runnerAdmission` shared by every `createDockerRunner()`.
+  - FIFO; `RUNNER_MAX_CONCURRENT` defaults to **2** whole operations, `RUNNER_MAX_QUEUE` to **8**. Invalid values fall back to the defaults.
+  - Admission happens after request validation, so malformed requests never take a slot, and before the health check and containers, so a slot covers the whole operation.
+  - A full queue returns `unavailable: Sandbox unavailable: runner busy, try again shortly` immediately; it's never graded.
+  - A queued abort rejects at once, removes its queue entry and listener, and never launches Docker.
+  - The release runs exactly once in `finally` (errors, timeouts, aborts, unavailable results).
+  - **The limit is process-local:** several backend processes on one machine are not coordinated.
+- Grading is unchanged: the run body moved into `admitted()` (see `git diff -w`). `Ports['runTests']` and the public projections are unchanged.
+- **Tests:** `tests/runner/admission.test.ts`, **9 passed**.
+  - Unit (deterministic): FIFO; queue full gives null; a queued abort rejects without taking a slot; a double release frees exactly one slot; an already-aborted signal throws.
+  - Fake CLI, new `gate` mode in which the grader holds until the test releases it:
+    - two operations admitted and the third waits, across two runner instances (`launches` shows 4 container starts, not 6, until the gate opens);
+    - 2 running + 8 queued, then an 11th is answered "runner busy" in under 1 s;
+    - a queued abort launches no containers;
+    - 5 spawn errors, a timeout and 6 sequential runs all leave 0 running and 0 queued.
+  - Mutation check: making `acquire` admit everything fails 7 of the 9.
+- **Regressions, real Docker (Windows 11, Docker 29.8.0):**
+  - `tests/runner` + `tests/assessment`: 104 passed, 6 failed (the known Windows-only `runner/local` failures: `.venv/bin/python` and `process.kill(-pid)`).
+  - This includes R3 anti-tamper (20), the seed bank (3 seeds: reference 3×, exact F2P/P2P), 3 simultaneous R3 runs (now 2 running + 1 queued) and Karthik's `Docker through the assessment API` test.
+  - Full suite: **309 passed, 7 failed** (the same `runner/local` and seam tests as main), **9 skipped** (PostgreSQL harness). `pnpm typecheck` OK.
+
+### Deferred security findings (recorded, not fixed in these PRs)
+| # | Severity | Finding | Files | Proposed mitigation |
+|---|---|---|---|---|
+| D1 | Medium | When `GET /v1/models/{id}` fails, the Featherless client assumes cost 4 and availability; a wrong metadata answer can mis-size the queue, and a model removed from the plan is found only by a failed chat call. | `llm/featherless.ts` | Keep the R0-measured costs as a pinned fallback table, and log/alert when the metadata and the table disagree. |
+| D2 | Low | `deploy/stop.sh` kills **whatever** listens on the backend port if the graceful stop fails; it doesn't verify the process is ours. | `deploy/lib.sh` | Record the native PID at start (have the backend write it) and check the command line before killing. |
+| D3 | Medium | IPC limits are per message (1 MiB) and per call count (10,000), with no cumulative byte budget per run. A run could relay up to about 10 GB in the worst case, bounded in practice only by the time limit and the grader's memory. | `runner/dockerRunner.ts` | Add a cumulative relayed-bytes budget per run (e.g. 32 MiB). Over budget means the worker is killed and the tests are `error`. |
+| D4 | Medium | The guarded assistant blocks code fragments, not prose: "loop over every element instead" can still give away a one-token fix. | `llm/guards.ts`, `llm/assistant.ts` | A reference-aware prose check (the tokens that differ between starter and reference, mentioned in prose), plus a per-task cap on assistant messages (TODO(OPEN-ASSISTANT-LIMITS)). |
