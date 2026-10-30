@@ -34,3 +34,9 @@ Newest entries at the bottom. Written by `/ship`.
   - Focus areas = DSA topics of tasks not fully solved + behaviour notes (testing discipline, hint reliance). Integrity signals count tab_hidden, copy, paste, assistant_blocked, extraction_flagged.
 - Verified: typecheck clean; backend tests all pass; ownership check passed.
 - Next: help with integration for the 00:30 checkpoint.
+
+## 2026-10-31 00:38 — checkpoint — verified end to end; Karthik's next prompts
+- Changed: docs/prompts/KARTHIK_Next_Prompts.md (K9 wiring, K10 tiers, K5 validation, K6 generation, K8 integration)
+- Seams/contracts affected: none
+- Teammates should know: checkpoint met on main @ 32cd3fd — typecheck clean; 75 tests pass (DB tests pass on real Postgres; Docker tests by Rithvik); full API journey 17/17 through APP_MODE=auth. Docker runner merged but not yet wired (K9). Open product decisions Q1/Q3/Q4 use the context §15 recommendations until changed.
+- Next: frontend with Akshit.
