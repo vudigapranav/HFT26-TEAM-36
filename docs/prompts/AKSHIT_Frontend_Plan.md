@@ -1,8 +1,9 @@
-# Frontend plan — Akshit (+ Pranav) · connected to the real backend
+# Frontend plan — Akshit (sole frontend owner) · connected to the real backend
 
 > The backend API works end to end on `main`: login → portfolio → quiz → assessment → run → hint → submit → report.
 > The frontend doesn't exist yet. The judges see it, so it's now the top priority.
-> All frontend code lives in `src/frontend/` (owned by Akshit and Pranav). Branches: `akshit/f…` and `pranav/f…`.
+> **Akshit builds the whole frontend** using **OpenCode**. Pranav reviews and merges; Pranav's assistant reviews every PR.
+> All frontend code lives in `src/frontend/`. Branches: `akshit/f<n>-<name>`.
 > PR base is always `vudigapranav/HFT26-TEAM-36` `main`, never cbitosc.
 
 ---
@@ -68,21 +69,21 @@ the fixed version run). Show it clearly. The UI must work as-is when the Docker 
 
 ---
 
-## 4. Screens and who builds them
+## 4. Screens, in build order (all Akshit)
 
-| # | Screen | Owner | Must show |
+| # | Screen | Target | Must show |
 |---|---|---|---|
-| F0 | Project setup, proxy, API client, layout, routing | **Akshit** | `src/frontend` Vite app; `api.ts` wrapper (JSON, error parsing, 401 → login) |
-| F1 | Landing + register/login | Akshit | Product line "Put your code under torque"; field errors; logout |
-| F2 | Portfolio upload | **Pranav** | JSON drop zone + paste box + "use sample" button (`tests/fixtures/portfolios/normal-web.json`); field errors; parsed result: domain + confidence, claimed topics, **warnings** (yellow), **injection flags** (red) |
-| F3 | Quiz → focus lane | Pranav | ≤10 MCQs, one per screen or one list; result card with lane domain/topics/skills |
-| F4 | **Coding environment** (the main screen) | **Akshit** | file tabs + Monaco; Run / Submit; test results table (visible tests with status, hidden as "3/3 pass"); output console (run only); **server-synced timer** (poll status every 15 s, count down locally); tier bar (Novice active; Adept/Master locked until K10); **Hint** button with level badge (disabled in Novice once K10 lands); assistant panel placeholder (Adept/Master); autosave indicator (debounced PUT ~1.5 s after typing) |
-| F5 | Integrity capture (inside F4 only) | Akshit | `visibilitychange` → tab_hidden/tab_visible; `copy`/`paste` on the editor (paste `size` = text length); batch and send every 10 s or 20 events; **only while the coding screen is open** |
-| F6 | Report | Pranav | big final score /100; outcome; per-task cards (passed/total, time, hints, AI breakdown: independence, hint yield, test discipline, gate); focus areas; integrity signals; "Start a new assessment" |
-| F7 | Generation progress (stub now) | Pranav | progress steps + validation receipts (filled in when K6 lands; static "seed task ready ✓" today) |
-| F8 | Polish + demo path | both | loading/empty/error states, responsive down to 1280 px laptop, consistent design, a scripted demo run |
+| F0 | Setup, proxy, API client, layout, routing | 30 min | `src/frontend` Vite app; `api.ts` wrapper (JSON, error parsing, 401 → login); app shell; CSS variables (light + dark) |
+| F1 | Landing + register/login | 30 min | Product line "Put your code under torque"; field errors; logout |
+| F2 | Portfolio upload | 45 min | JSON drop zone + paste box + "Use sample" (bundled copy of `normal-web.json`); field errors; parsed result: domain + confidence, claimed topics, **warnings** (yellow), **injection flags** (red) |
+| F3 | Quiz → focus lane → start | 30 min | ≤10 MCQs; lane card (domain/topics/skills); then `POST /assessments` → coding screen; handle 422 `SEED_TOPIC_UNAVAILABLE` |
+| F4 | **Coding environment** (main screen, most judged) | 2 h | file tabs + Monaco; Run / Submit; results table (visible tests + hidden as "3/3 pass"); output console (run only); **server-synced timer**; tier bar (Novice active; Adept/Master locked until K10); Hint button + level badge; assistant panel placeholder; autosave indicator |
+| F5 | Integrity capture (inside F4 only) | 30 min | `visibilitychange` → tab_hidden/tab_visible; `copy`/`paste` on the editor (paste `size`); batched POST every 10 s or 20 events; only while F4 is mounted |
+| F6 | Report | 45 min | big final score /100; outcome; per-task cards (passed/total, time, hints, AI breakdown); focus areas; integrity signals; "Start new assessment" |
+| F7 | Generation progress (stub until K6) | 20 min | steps + validation receipts; today a static "Seed task ready ✓" |
+| F8 | Polish + demo path | rest | loading/empty/error states; 1280 px laptop layout; consistent design; a scripted demo run end to end |
 
-**Order:** F0 (Akshit) → F1 + F2 in parallel → F3 + F4 → F5 + F6 → F7 + F8.
+**Priority if time runs short:** F0 → F1 → F2 → F3 → **F4** → F6 are the demo path. F5, F7, F8 come after.
 
 ---
 
@@ -92,49 +93,102 @@ the fixed version run). Show it clearly. The UI must work as-is when the Docker 
 - Never compute grades in the browser. Show what the API returns.
 - Server time wins: the timer comes from `remaining_sec`; on 0, call status and move to the report.
 - Every async action shows loading, success and error states. Disable buttons while a request is in flight (prevents double-submit).
-- Only commit inside `src/frontend/` (plus your own status log). The pre-push hook blocks anything else.
-- Small commits, push at least every 30 minutes, `/ship` before every push.
+- Only commit inside `src/frontend/` (plus `docs/status/akshit.md`). The pre-push hook blocks anything else.
+- Small commits, push at least every 30 minutes, run the **Ship prompt** before every push.
 
 ---
 
-## 6. Prompts (Claude Code)
+## 6. OpenCode prompts
 
-**F0 — Akshit (do first):**
+**One-time setup (terminal):**
+```bash
+git checkout main && git pull && git config core.hooksPath .githooks
 ```
-I'm Akshit (frontend). Branch akshit/f0-setup from origin/main. Read docs/prompts/AKSHIT_Frontend_Plan.md fully,
-plus src/backend/README.md (frontend setup section) and src/backend/contracts/public.ts.
+Run OpenCode **locally in the repo folder** so the pre-push safety hook runs on every push.
+
+### 6.1 Session opener — paste at the start of EVERY new OpenCode session
+```
+You are working in the TorqueCode repo (team PAARK, 24-hour hackathon). I am Akshit, the ONLY frontend developer.
+Read these first and treat them as binding rules for this whole session:
+- CLAUDE.md (written for Claude Code, but every rule applies to you exactly the same)
+- docs/prompts/AKSHIT_Frontend_Plan.md (my plan: stack, proxy, API map, screens F0–F8, rules)
+- src/backend/README.md (frontend setup section and endpoint table)
+- src/backend/contracts/public.ts (the exact API data shapes — never invent fields)
+- docs/status/*.md (what the backend team changed)
+- scripts/owners.json (I may only edit src/frontend/ and docs/status/akshit.md)
+Never work on main; my branches start with akshit/. Never commit .env or keys. Never compute grades in the browser.
+Run: git fetch origin && git status. Reply with a 5-line summary, then wait for my task.
+```
+
+### 6.2 Ship prompt — paste before EVERY push
+```
+Ship this work. Stop at the first failure, explain it, and fix it:
+1. Branch must start with akshit/ (never main).
+2. git fetch origin && git rebase origin/main (commit or stash first).
+3. Re-read docs/prompts/AKSHIT_Frontend_Plan.md, src/backend/contracts/public.ts and docs/status/*.md — they may have changed.
+4. List changed files (git diff --name-only origin/main...HEAD plus uncommitted). Every file must be under src/frontend/
+   or be docs/status/akshit.md. Revert anything else.
+5. Check: API calls match §3 exactly (paths, bodies, error shape); no secrets; no grading in the browser.
+6. cd src/frontend && npm run typecheck && npm run build (or the pnpm equivalents). Must pass.
+7. Append to docs/status/akshit.md:
+   ## <YYYY-MM-DD HH:MM> — <F#> — <summary>
+   - Changed: ...   - Backend needs: ...   - Next: ...
+8. Commit "feat(<F#>): <summary>" and run: git push -u origin HEAD
+   (the pre-push hook checks ownership and secrets; never use --no-verify).
+9. Print: https://github.com/vudigapranav/HFT26-TEAM-36/compare/main...<branch>  (base must be vudigapranav, NOT cbitosc).
+```
+
+### 6.3 F0 — setup (first)
+```
+Task F0. Branch akshit/f0-setup from origin/main.
 Create src/frontend: Vite + React + TypeScript, react-router-dom, @monaco-editor/react. Dev server on localhost:5173
-with the /api proxy from §2 (strip /api, keep Origin). Add src/frontend/src/api.ts: typed fetch wrapper for every
-call in §3 (JSON bodies, parse { error: { code, message, fields } }, 401 → redirect to /login). Routes: /, /login,
-/portfolio, /quiz, /assessment/:id, /report/:id. A simple app shell (header with product name + logout) and CSS
-variables for colors/spacing (light + dark). Types: import from '@torquecode/contracts' if src/frontend is in
-pnpm-workspace.yaml; otherwise define minimal local types in src/types.ts with a TODO to switch.
-Add an npm script "dev", "build", "typecheck". Verify: pnpm --dir src/frontend build passes; with the backend running
-(APP_MODE=auth, AUTH_ORIGIN=http://localhost:5173) GET /api/auth/me returns 401 through the proxy.
-Then /ship.
+with the /api proxy from §2 (strip /api, keep Origin). src/frontend/src/api.ts: typed fetch wrapper for EVERY call in §3
+(JSON bodies, parse { error: { code, message, fields } }, 401 → redirect to /login). Routes: /, /login, /portfolio,
+/quiz, /assessment/:id, /report/:id. App shell (header: TorqueCode + logout) and CSS variables (light + dark).
+Types: import from '@torquecode/contracts' if src/frontend is listed in pnpm-workspace.yaml; otherwise minimal local
+types in src/types.ts with a TODO to switch. Scripts: dev, build, typecheck.
+Verify: build passes; with the backend running (APP_MODE=auth, AUTH_ORIGIN=http://localhost:5173) GET /api/auth/me
+returns 401 through the proxy. Then run the Ship prompt.
 ```
 
-**F4 + F5 — Akshit (the main screen):**
+### 6.4 F1 + F2 + F3 — login, portfolio, quiz
 ```
-Branch akshit/f4-coding-screen from origin/main. Build /assessment/:id per §4 F4 and F5 of
-docs/prompts/AKSHIT_Frontend_Plan.md, using the api.ts client.
-On load: GET status + GET task. Left: statement (markdown) and visible tests. Center: file tabs + Monaco (read-only for
+Task F1–F3. Branch akshit/f1-f3-onboarding from origin/main. Follow §3–§4.
+F1 /login: register + login forms, field errors from error.fields, 429 message, then go to /portfolio; logout in header.
+F2 /portfolio: drop zone + textarea + "Use sample" (copy tests/fixtures/portfolios/normal-web.json into
+src/frontend/src/samples/); POST /portfolio; show field errors, or the parsed profile: domain + confidence, claimed
+topics, warnings (yellow), injection flags (red). Button → /quiz.
+F3 /quiz: GET questions, one answer each, POST answers, show the focus lane card, then "Start assessment" →
+POST /assessments → /assessment/:assessment_id (store task_id and report_id). 422 SEED_TOPIC_UNAVAILABLE →
+"The current demo task needs a portfolio that claims arrays."
+Then run the Ship prompt.
+```
+
+### 6.5 F4 + F5 — coding screen (the most important)
+```
+Task F4–F5. Branch akshit/f4-coding-screen from origin/main. Build /assessment/:id per §4 F4 and F5.
+On load: GET status + GET task. Left: statement (markdown) + visible tests. Center: file tabs + Monaco (read-only for
 non-editable files). Right/bottom: results table, output console, hint panel, assistant placeholder.
-Autosave: debounced PUT files. Run/Submit: POST with {} after a successful autosave; render visible tests and the hidden
-aggregate; on 503 SANDBOX_UNAVAILABLE show a clear banner (no grade). Timer: server remaining_sec, poll status every 15 s.
-Tier bar: Novice active, Adept/Master locked (wired to /tier/upgrade later). Hint: POST hint, show level + text, 409 → "no
-hints left". Integrity: visibilitychange/copy/paste → batched POST events only while this screen is mounted.
-On timer 0 or after Submit, offer "View report" → /report/:reportId. Then /ship.
+Autosave: debounced PUT files (~1.5 s). Run/Submit: POST {} after a successful autosave; render visible tests and
+the hidden aggregate; on 503 SANDBOX_UNAVAILABLE show a clear banner (no grade). Timer: server remaining_sec, poll
+status every 15 s, count down locally. Tier bar: Novice active; Adept/Master locked (upgrade wired later). Hint: POST,
+show level + text; 409 → "No hints left". Integrity: visibilitychange/copy/paste → batched POST events only while
+this screen is mounted. After Submit or timer 0 → "View report" → /report/:reportId.
+Then run the Ship prompt.
 ```
 
-**F2 + F3 + F6 — Pranav:**
+### 6.6 F6 + F7 — report + progress
 ```
-Branch pranav/f2-portfolio-quiz-report from origin/main (after Akshit's F0 is merged). Read
-docs/prompts/AKSHIT_Frontend_Plan.md §3–§4. Build /portfolio (F2), /quiz (F3) and /report/:id (F6) using api.ts.
-Portfolio: drop zone + textarea + "Use sample" (bundle a copy of tests/fixtures/portfolios/normal-web.json into
-src/frontend/src/samples/), show field errors, and the parsed profile with warnings (yellow) and injection flags (red).
-Quiz: render questions, submit answers, show the focus lane, then POST /assessments and navigate to
-/assessment/:id (handle 422 SEED_TOPIC_UNAVAILABLE with a clear message: "the current demo task needs arrays").
-Report: final score, outcome, per-task cards with the AI-efficiency breakdown, focus areas, integrity signals.
-Then /ship.
+Task F6–F7. Branch akshit/f6-report from origin/main.
+F6 /report/:id: GET report → big final score /100, outcome, per-task cards (passed/total, time, hints, AI breakdown:
+independence, hint yield, test discipline, gate), focus areas, integrity signals, "Start new assessment".
+F7: a progress component shown between quiz and coding screen: steps + validation receipts (static "Seed task
+ready ✓" today; wire to GET status progress when K6 lands). Then run the Ship prompt.
+```
+
+### 6.7 F8 — polish (after the demo path works)
+```
+Task F8. Branch akshit/f8-polish. Loading/empty/error states everywhere, disabled buttons in flight, 1280 px laptop
+layout, consistent spacing/typography/colors, keyboard focus states. Walk the full demo path twice from a clean
+browser and fix every rough edge. Then run the Ship prompt.
 ```

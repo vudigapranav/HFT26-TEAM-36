@@ -52,3 +52,7 @@ Newest entries at the bottom. Written by `/ship`.
 - Seams/contracts affected: none
 - Teammates should know: Karthik — please add "- src/frontend" to pnpm-workspace.yaml so the frontend can import @torquecode/contracts types. Frontend dev runs on http://localhost:5173 → backend AUTH_ORIGIN must be exactly that.
 - Next: F2/F3/F6 after Akshit's F0.
+
+## 2026-10-31 00:55 — frontend plan: Akshit is the sole frontend owner (OpenCode)
+- Changed: docs/prompts/AKSHIT_Frontend_Plan.md — all screens F0–F8 assigned to Akshit in build order; OpenCode session-opener + Ship prompts (no /start or /ship there).
+- Teammates should know: Pranav is not building frontend; he reviews/merges. Karthik — still please add "- src/frontend" to pnpm-workspace.yaml.
