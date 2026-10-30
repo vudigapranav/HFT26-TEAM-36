@@ -6,13 +6,13 @@
 
 **The product rule now (LOCKED, Pranav 03:00):** one 60-minute timer; everyone starts on Novice questions; after **submitting every question in the current set (correct or not)** the candidate may click **"Unlock next questions"**; max **2** unlocks; **level names are never shown** in the assessment UI (the report may name them); earlier questions stay open; AI help only on Adept/Master questions.
 
-**State:** R1–R5 + R3 anti-tamper + R5-live all merged (thank you). **Left: JOB 1 seeds on real Docker (15 min) → JOB 2 R6 deployment (critical for the demo) → JOB 3 support.**
+**State:** R1–R5 + R3 anti-tamper + R5-live all merged (thank you). **Done since: JOB 1 (#39) and R6 (#40).** **Left (Pranav, 03:50): R6 on the demo machine → JOB 2b cloud VM + Vercel → JOB 4 K5 validation → JOB 5 K6 live generation (you now own generation/ and tools/) → JOB 3 support if time.**
 
 Use `/start <id>` before each job and `/ship` after it.
 
 ---
 
-## JOB 1 — real-Docker check of the three seeds (`/start R7`)
+## JOB 1 — real-Docker check of the three seeds (`/start R7`) — ✅ DONE (#39)
 
 ```
 Branch rithvik/k7-docker-check, tests only (+ your status file).
@@ -24,7 +24,7 @@ Then /ship.
 
 ---
 
-## JOB 2 — R6 deployment on the demo Mac (`/start R6`)
+## JOB 2 — R6 deployment (`/start R6`) — ✅ merged (#40); still run `deploy/start.sh && deploy/verify.sh --outage` on the demo machine
 
 ```
 Branch rithvik/r6-deploy. Only deploy/ (+ runner/ if needed, tests, your status file).
@@ -39,7 +39,20 @@ Then /ship.
 
 ---
 
-## JOB 3 — after R6 (`/start R8`), only if time remains
+## JOB 2b — cloud VM + Vercel (`/start R6b`) ⚡ after R6 works locally
+
+```
+Pranav decided (CLAUDE.md "Deployment + ownership decision"): frontend on Vercel, backend + Docker sandbox + PostgreSQL on ONE cloud VM with Docker (not AWS). Branch rithvik/r6b-cloud. Only deploy/ (+ your status file).
+1. deploy/cloud/: a guide + scripts for a fresh Ubuntu VM (DigitalOcean/Azure/GCP, 2–4 vCPU, 4–8 GB): install Docker, clone, deploy/start.sh in production mode, PostgreSQL bound to localhost only, a reverse proxy with automatic HTTPS (Caddy) in front of the backend, systemd (or compose restart policies) so it survives reboots, firewall: only 80/443 (+ SSH).
+2. Production env: NODE_ENV=production (HTTPS-only cookies), AUTH_ORIGIN=https://<vercel-app>, TRUST_PROXY=true (Karthik adds it in K11), FEATHERLESS_* from the VM's own .env (never git), RUNNER=docker.
+3. Vercel: src/frontend/vercel.json (coordinate with Akshit — it's his folder; send him the exact file) with a rewrite {"source": "/api/:path*", "destination": "https://<backend-host>/:path*"} so the browser stays same-origin; check that Origin and Set-Cookie pass through and that a Run (2–6 s) finishes within the proxy timeout.
+4. Verify from a clean browser on the public Vercel URL: register → portfolio → quiz → Run/Submit on the VM's Docker → report; then deploy/verify.sh against the VM. Write steps + results in your status file.
+Then /ship.
+```
+
+---
+
+## JOB 3 — after R6b (`/start R8`), only if time remains
 
 ```
 Pick whichever is most useful, in this order, and tell Pranav which you took:
@@ -48,3 +61,60 @@ b) Warm-container / startup-time improvements in the runner if a Run takes > 3 s
 c) Run pnpm llm:eval once more after K10 merges, against an adept and a master seed, with LLM_EVAL_CAP_USD=0.10; record results in your status file.
 Then /ship.
 ```
+
+---
+
+## JOB 4 — K5 validation engine (`/start K5`) — validation engine (after K10)
+
+```
+Task K5. Branch rithvik/k5-validation from origin/main. Ownership: you now own src/backend/generation/ and src/backend/tools/ (Pranav, 03:50).
+Implement Ports.validateTask in src/backend/generation/validate.ts — deterministic gates only (context §10.2 B3),
+each gate → { gate, status: pass|fail, reason } in the ValidationReceipt:
+- schema: task + files + tests complete and well-formed
+- topics: task.dsa_topics ⊆ claimed_topics; static scan of the reference (src/backend/tools/topic_scan.py, Python ast,
+  JSON in/out, never import/eval candidate code) flags constructs from unclaimed topics (e.g. heapq when heap isn't claimed)
+- imports: only allow-listed modules (tools/import_check.py)
+- reference: reference passes ALL tests, 3 runs in a row (through Ports.runTests — the Docker runner)
+- starter: f2p_ids fail and p2p_ids pass on the starter; no syntax errors
+- leakage: starter not too similar to the reference (normalized token similarity threshold); hints contain no
+  solution code (long code blocks or high similarity to the reference)
+- differential + performance: implement after the rest; Master tasks only for performance
+Run validateTask over every seed-bank task in a test (all must pass), plus deliberately broken copies that must be
+rejected with clear reasons. Expose receipts so the frontend can show them ("Reference passes 5/5 ✓ …"). Then /ship.
+
+UPDATES (03:20):
+- The reference/starter gates run through Ports.runTests = Rithvik's R3 split-container runner. A run that returns unavailable "Task not supported by the isolated runner" is a FAILED gate called "format": task tests must call candidate functions with plain data only (see src/backend/runner/harness/README.md). Add it as its own gate.
+- Without Docker (CI), mark runner-based gates "skipped: runner unavailable" — never "pass". The local stand-in may only be used for the reviewed seeds.
+- Performance gate (Master): the reference finishes its perf test well inside the limit; the starter fails it.
+- All three current seeds must pass every gate; deliberately broken copies (reference fails; starter passes everything; unclaimed heapq import; a hint containing a reference line) must be rejected with clear reasons.
+- Receipts are public-safe: gate names, pass/fail, counts — never test source or expected values.
+```
+
+---
+
+## JOB 5 — K6 live generation (`/start K6`) — generation pipeline (after K5)
+
+```
+Task K6. Branch rithvik/k6-generation from origin/main.
+Implement Ports.generateAssessment in src/backend/generation/generate.ts (context §10.2 B2):
+- Prompts as versioned files in generation/prompts/ (never inline strings). Portfolio text is untrusted: delimit it.
+- Staged calls through Ports.chat ONLY (Rithvik's Featherless client): spec → reference + brute force → test inputs.
+  Model output uses tagged sections <file path="...">...</file> plus a small JSON header; parse defensively.
+- Expected outputs are computed by RUNNING the reference (never written by the LLM).
+- Starter derived deterministically from the reference: tools/mutate.py (bug injection: off-by-one, flipped comparison,
+  missing edge case) for bug-fix tasks; tools/stub.py (function-body stubs) for feature tasks.
+- Hint ladder (3 levels) generated, then checked by the leakage gate.
+- validateTask every candidate task; retry up to 3 times feeding back the failing gate's reason; then fall back to the
+  seed bank for that tier (re-skinned to the candidate's domain only if it still validates).
+- Progress callback per tier/stage so the frontend progress screen can show validation receipts live.
+- Generation runs as a background job; POST /assessments returns immediately and status shows progress.
+Tests with Ports.chat mocked: happy path, unparseable output → retry → seed fallback, topic-bound violation rejected.
+One manual script `pnpm gen:smoke` that runs a real generation for tests/fixtures/portfolios/normal-web.json. Then /ship.
+
+UPDATES (03:20):
+- Generated tests MUST follow the R3 harness format (plain-data arguments/returns, builtin exceptions only; no objects, no subprocess, no servers). Put this rule in the generation prompt; the K5 "format" gate enforces it.
+- One task per tier for now (the question-set code supports N).
+- If generation fails or Featherless is unavailable → seed bank for that tier. The demo must work with ZERO LLM calls.
+```
+
+---

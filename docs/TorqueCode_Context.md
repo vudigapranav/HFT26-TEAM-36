@@ -281,7 +281,15 @@ The recordings mentioned MCQs, debugging, direct coding, LeetCode-type DSA, syst
         Featherless API (OpenAI-compatible) — key lives ONLY here
 ```
 
-**Hosting [LOCKED]:** the code runner is a container runner on our own backend server, **not AWS** (a past project had trouble managing AWS instances). Running locally for the demo is acceptable. Exact deployment target is **[OPEN]**.
+**Hosting [LOCKED]:** the code runner is a container runner on our own backend server, **not AWS** (a past project had trouble managing AWS instances). Running locally for the demo is acceptable.
+
+**Deployment + ownership decision [LOCKED — Pranav, 2026-10-31 03:50].**
+- **Frontend on Vercel; backend + Docker sandbox + PostgreSQL on one cloud VM with Docker** (not AWS). Vercel can't start containers, so the backend never runs on Vercel.
+- **Same-origin through Vercel:** the Vercel app rewrites `/api/:path*` → `https://<backend-host>/:path*`. The browser only ever talks to the Vercel origin, so cookies stay first-party (`__Host-`, Secure, SameSite=Lax) and **no CORS** is added. `AUTH_ORIGIN` = the Vercel production URL.
+- **Behind that proxy the backend must read the client IP from a trusted proxy header** (e.g. `x-forwarded-for` / `x-real-ip`, only when an explicit `TRUST_PROXY` setting is on); otherwise every user shares Vercel's IP and the login rate limit blocks everyone.
+- **This is a shipping app, not a demo toy:** everything a candidate creates (profile, assessment, question sets, files, runs, events, reports, report history per user) is stored in **PostgreSQL**, survives restarts, and has no 100-item in-memory cap (Karthik, K11).
+- **All the AI must work for real:** live Featherless task generation + the deterministic validation engine (K5/K6) are now **Rithvik's** (after R6), with the seed bank as the fallback; the guarded assistant goes live in K10.
+- Admin panel: not needed.
 
 ### Tech stack status
 

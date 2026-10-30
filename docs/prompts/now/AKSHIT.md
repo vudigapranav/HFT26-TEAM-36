@@ -73,6 +73,14 @@ Polish for the demo: consistent dark theme with one accent colour; loading and e
 
 ---
 
+## 2b. Vercel (Pranav, 03:50)
+
+The frontend will be deployed on **Vercel**; the backend runs on a separate cloud VM. Paste into OpenCode once the screens work:
+
+```
+Prepare src/frontend for Vercel. All API calls stay relative (/api/...). Add src/frontend/vercel.json with a rewrite {"source": "/api/:path*", "destination": "https://BACKEND_HOST/:path*"} (Rithvik gives the real BACKEND_HOST) plus the SPA fallback {"source": "/(.*)", "destination": "/index.html"} after it. Never put any key or secret in the frontend or in vercel.json. Build must pass (npm run build). Then Ship.
+```
+
 ## 3. Tell Pranav after each push
 
 Which screens work against the real backend, what's still mocked, and anything the backend is missing (field names, errors).
