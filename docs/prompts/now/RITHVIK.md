@@ -6,9 +6,17 @@
 
 **The product rule now (LOCKED, Pranav 03:00):** one 60-minute timer; everyone starts on Novice questions; after **submitting every question in the current set (correct or not)** the candidate may click **"Unlock next questions"**; max **2** unlocks; **level names are never shown** in the assessment UI (the report may name them); earlier questions stay open; AI help only on Adept/Master questions.
 
-**State:** R1–R5 + R3 anti-tamper + R5-live all merged (thank you). **Done since: JOB 1 (#39) and R6 (#40).** **Left (Pranav, 03:50): R6 on the demo machine → JOB 2b cloud VM + Vercel → JOB 4 K5 validation → JOB 5 K6 live generation (you now own generation/ and tools/) → JOB 3 support if time.**
+**State:** R1–R5 + R3 anti-tamper + R5-live all merged (thank you). **Done since: JOB 1 (#39) and R6 (#40).** **Left (Pranav, 04:17): (a) runner-wide admission limit (small PR) → (b) JOB 5 K6 live generation on top of Karthik's K5 → (c) JOB 2b cloud VM + Vercel as soon as Pranav gives the VM → JOB 3 if time.** K5 is Karthik's again.
 
 Use `/start <id>` before each job and `/ship` after it.
+
+---
+
+## JOB 0 — runner-wide admission limit (`/start R9`, ≤30 min)
+
+```
+Branch rithvik/r9-admission. In runner/dockerRunner.ts add a bounded, process-wide limit on simultaneous Docker runs (e.g. RUNNER_MAX_CONCURRENT, default 4) with a bounded FIFO queue; abort while waiting releases the slot; queue full → unavailable 'runner busy' (never a grade). Tests: parallel runs, saturation, abort while queued. Nothing else in this PR. Then /ship.
+```
 
 ---
 
@@ -64,38 +72,15 @@ Then /ship.
 
 ---
 
-## JOB 4 — K5 validation engine (`/start K5`) — validation engine (after K10)
-
-```
-Task K5. Branch rithvik/k5-validation from origin/main. Ownership: you now own src/backend/generation/ and src/backend/tools/ (Pranav, 03:50).
-Implement Ports.validateTask in src/backend/generation/validate.ts — deterministic gates only (context §10.2 B3),
-each gate → { gate, status: pass|fail, reason } in the ValidationReceipt:
-- schema: task + files + tests complete and well-formed
-- topics: task.dsa_topics ⊆ claimed_topics; static scan of the reference (src/backend/tools/topic_scan.py, Python ast,
-  JSON in/out, never import/eval candidate code) flags constructs from unclaimed topics (e.g. heapq when heap isn't claimed)
-- imports: only allow-listed modules (tools/import_check.py)
-- reference: reference passes ALL tests, 3 runs in a row (through Ports.runTests — the Docker runner)
-- starter: f2p_ids fail and p2p_ids pass on the starter; no syntax errors
-- leakage: starter not too similar to the reference (normalized token similarity threshold); hints contain no
-  solution code (long code blocks or high similarity to the reference)
-- differential + performance: implement after the rest; Master tasks only for performance
-Run validateTask over every seed-bank task in a test (all must pass), plus deliberately broken copies that must be
-rejected with clear reasons. Expose receipts so the frontend can show them ("Reference passes 5/5 ✓ …"). Then /ship.
-
-UPDATES (03:20):
-- The reference/starter gates run through Ports.runTests = Rithvik's R3 split-container runner. A run that returns unavailable "Task not supported by the isolated runner" is a FAILED gate called "format": task tests must call candidate functions with plain data only (see src/backend/runner/harness/README.md). Add it as its own gate.
-- Without Docker (CI), mark runner-based gates "skipped: runner unavailable" — never "pass". The local stand-in may only be used for the reviewed seeds.
-- Performance gate (Master): the reference finishes its perf test well inside the limit; the starter fails it.
-- All three current seeds must pass every gate; deliberately broken copies (reference fails; starter passes everything; unclaimed heapq import; a hint containing a reference line) must be rejected with clear reasons.
-- Receipts are public-safe: gate names, pass/fail, counts — never test source or expected values.
-```
+## JOB 4 — K5 validation: **Karthik's** (Pranav, 04:17). Don't build it. Agree the task format with him; K6 calls his `validateTask`.
 
 ---
 
 ## JOB 5 — K6 live generation (`/start K6`) — generation pipeline (after K5)
 
 ```
-Task K6. Branch rithvik/k6-generation from origin/main.
+Task K6. Branch rithvik/k6-generation from origin/main. Karthik builds validateTask (K5) in parallel: code against Ports.validateTask and use a stub in tests until his PR merges.
+STRUCTURED TESTS (Pranav 04:17, from your audit): the model proposes data only — {entrypoint: "app.module:function", cases: [{args: [...], kwargs?: {...}}], visibility per case} — and a FIXED trusted template in generation/ renders the pytest files (plain-data calls, expected values computed by running the reference). Never accept LLM-written Python test files. Mark generated task statements as untrusted in the assistant prompt (llm/assistant.ts: drop the "(trusted)" label for task text; add an injection test).
 Implement Ports.generateAssessment in src/backend/generation/generate.ts (context §10.2 B2):
 - Prompts as versioned files in generation/prompts/ (never inline strings). Portfolio text is untrusted: delimit it.
 - Staged calls through Ports.chat ONLY (Rithvik's Featherless client): spec → reference + brute force → test inputs.
