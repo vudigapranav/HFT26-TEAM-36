@@ -141,3 +141,14 @@ Newest entries at the bottom. Written by `/ship`.
 - Teammates should know: **Rithvik**, on the demo machine (deploy/start.sh with Docker + key), run `python3 scripts/attack-api.py` and confirm 0 skips. That is the only run that exercises the assistant-abuse and 2nd/3rd-unlock checks.
 - Seams/contracts affected: none
 - Next: P13 once Report.claims lands.
+## 2026-10-31 05:05 — P15 — full-journey script (scripts/e2e-journey.py)
+- Changed: scripts/e2e-journey.py (new, Python stdlib only).
+- What it does: register (unique email) → login → /auth/me → upload docs/demo/demo-portfolio.json → quiz (answer all) → create assessment → wait until ready (polls generation status if present, READY_TIMEOUT_S, default 180 s) → set 1 run + submit every question → unlock → set 2: one hint + one assistant question → run + submit → unlock → set 3 → run + submit → report (final_score 0..100, one row per available question, AIE breakdown on later-set rows, the paste integrity signal it sent) → GET /reports list if present.
+  - BASE defaults to http://127.0.0.1:3001; ORIGIN defaults to BASE's scheme://host and must equal AUTH_ORIGIN.
+  - Locally (BASE on localhost + seed bank present) set 1 is fixed with the seed reference, matched by task title. Otherwise code is submitted as-is.
+  - ✅/❌ per step with timings; exits 1 on the first failure. Never prints cookies or the password.
+  - ⚠️ (not a failure) for: assistant 503 LLM_UNAVAILABLE without a key; no /reports list. A runner 503 is a failure, with a pointer to deploy/README.md.
+- Verified on main @ 19df7ff (APP_MODE=auth, RUNNER=local, scratch PostgreSQL 15, no key, port 3002): steps 1–10 ✅ through the set-1 reference fix (5/5), unlock 1 and the hint. Assistant ⚠️ (no key). Then it fails cleanly at the set-2 run with 503 SANDBOX_UNAVAILABLE, which is correct, because the local runner only grades the Novice seed. Also checked: an unreachable BASE fails with a clear message.
+- **Not yet verified live:** set 2/3 submits, unlock 2, the report checks and the report list. They need the Docker runner. **Rithvik**, after deploy/start.sh on the demo machine, run `python3 scripts/e2e-journey.py`; it should end "Journey PASSED". For the cloud check: `BASE=https://<app>/api ORIGIN=https://<app> python3 scripts/e2e-journey.py`.
+- Seams/contracts affected: none
+- Next: P16 docs refresh.
