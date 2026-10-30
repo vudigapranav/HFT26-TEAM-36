@@ -507,6 +507,14 @@ Design rules:
 - Show the breakdown in the report so the score is explainable.
 - Novice has no assistant, so how AIE applies there is **[OPEN]** (§15, Q4).
 
+**Decided by Pranav [LOCKED]** — exact definitions for the formula above. The scorer, the report and the frontend all use these.
+
+1. **H_max and weights.** `H_max = 6`, exported as the named constant `AIE_H_MAX`. Weights: hint level 1 = 1, level 2 = 2, level 3 = 3, assistant message = 1.
+2. **HintYield window.** For each AI interaction, the window runs from the interaction's timestamp until whichever comes **first**: 3 runs or 10 minutes. Gain = (best visible pass rate among runs in the window) − (visible pass rate of the last run **before** the interaction; 0 if there was none), clipped to [0, 1]. No run in the window → that interaction's yield = 0. HintYield = mean over all AI interactions; = 1 if there were none.
+3. **TestDiscipline.** = (runs that followed a real code change) ÷ (all runs). Submits are **not** runs. If there was no run before the first submit, TestDiscipline = 0 (this component only, not the whole score). Zero runs → 0.
+4. **Real code change.** The sha256 of the editable files' contents (sorted by path, line endings normalized to LF) differs from the previous run's hash. Whitespace-only edits count as changes.
+5. **What counts as AI use, and the gate.** Each assistant message is an AI interaction (weight 1) in both Independence and HintYield. Blocked extraction attempts weigh 0 in the score but are reported as integrity flags. `gate` uses the **final submit's** pass rate over **all** tests (visible + hidden); no submit → `gate = 0`.
+
 ---
 
 ## 13. Performance report
