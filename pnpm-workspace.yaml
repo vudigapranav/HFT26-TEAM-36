@@ -1,3 +1,5 @@
 packages:
   - src/backend
   - src/backend/contracts
+allowBuilds:
+  argon2: false

@@ -1,6 +1,6 @@
 # TorqueCode backend decisions
 
-Status: K0 stack approved by Karthik; Karthik confirmed Rithvik and Pranav agree in this chat. K1 is implemented and verified in this checkout, ready for review and unmerged. Karthik subsequently authorized review, fixes and shipping K1 to the team fork; stop after K1 and wait for his explicit next. No merge is authorized.
+Status: K0 approved; K1 merged in PR #6. Pranav's intake/quiz/AIE (PR #7) and report builder (PR #8) are merged. K2 database/auth is implemented in the working tree on karthik/k2-auth-db; Karthik reports 9/9 isolated PostgreSQL integration tests passed in the host terminal. K2 is not committed, pushed or merged. No merge is authorized.
 
 ## Scope and sources
 
@@ -60,7 +60,7 @@ Frontend -> public contracts -> Fastify app -> injected Ports
 | `intake/`, `scoring/` | Pranav; no implementation changes by Karthik |
 | `src/backend/tests/` | Shared; each person tests their area and shared contracts |
 
-The ownership map is reused from Pranav's pending kit, with one explicit addition: Karthik owns `src/backend/uv.lock`. Runtime configuration remains in package/project files, not extra unowned root files. Root manifests and workspace configuration are setup/shared integration files.
+The ownership map is reused from Pranav's merged setup kit, with one explicit addition: Karthik owns `src/backend/uv.lock`. Runtime configuration remains in package/project files, not extra unowned root files. Root manifests and workspace configuration are setup/shared integration files.
 
 ## Local stand-in safety and limits
 
@@ -112,12 +112,26 @@ K1 requires clean install/build/typecheck, all ten callable seams, real repeated
 
 ## Approved compatibility exception to the checkpoint prompts
 
-After reading `docs/prompts/KARTHIK_Codex_Prompts.md`, Karthik explicitly chose: “Keep the earlier approved K1 contracts and ship them, explicitly flagging the differences to Pranav and Rithvik.” This exception applies to K1 only.
+After reading `docs/prompts/KARTHIK_Codex_Prompts.md`, Karthik explicitly chose: “Keep the earlier approved K1 contracts and ship them, explicitly flagging the differences to Pranav and Rithvik.” The original approval applied to K1. On 2026-10-31 Karthik explicitly extended the same stack and contract decisions to K2; conflicting checkpoint defaults remain superseded.
 
-- This PR is the original K1 skeleton, not completion of the new K1a/K1b checkpoint sequence. No K1b endpoints, in-memory sessions or K2 work are included.
+- Historical K1 scope: the original skeleton did not complete the newer K1a/K1b checkpoint sequence. K2 auth is documented separately below; checkpoint assessment endpoints and in-memory sessions remain outside this change.
 - Shared public package uses TypeBox `public.ts`, snake_case fields, and server-private `internal.ts`. It does not provide Zod `schemas.ts` or camelCase aliases.
 - Seam names are `runTests`, `chat`, `nextHint`, `assistantReply`, `generateAssessment`, `validateTask`, `parsePortfolio`, `quiz`, `calculateAie`, `buildReport`. `quiz` accepts either profile-only or answers; there are no `llmChat`, `getQuiz`, `scoreQuiz`, or `computeAIE` aliases.
 - Integration adapters are `api/dev-stubs.ts`; the server injects Ports. There is no `api/wiring.ts` yet. Pranav and Rithvik must use `contracts/seams.ts` rather than assuming the newer prompt's filenames/signatures.
 - `pnpm` workspace, Node 24.22.1, Python 3.13, pytest and proposed PostgreSQL/opaque-cookie authentication remain the approved stack; npm, Python 3.12, SQLite/Prisma and JWT in the prompt are superseded defaults, not implemented requirements.
-- Only `/health` is exposed. `pnpm openapi` prints implemented OpenAPI; no `/docs` Swagger UI is claimed.
+- K1 exposed only `/health`; explicit auth mode now adds the four K2 auth routes. `pnpm openapi` prints enabled OpenAPI; no `/docs` Swagger UI is claimed.
 - Pranav's large/empty-topic intake fixture expectations conflict with K1 input caps/strict claimed-topic bounding. Resolve these before wiring P1/K4; do not silently change teammate fixtures or add claimed topics.
+
+
+## K2 database and authentication
+
+- Explicit `APP_MODE=auth` requires `DATABASE_URL` and exact `AUTH_ORIGIN` (no trailing slash/path). Default skeleton mode still needs no database and exposes health only. Health mode is now `skeleton | auth`; candidate execution remains false. Binding remains loopback pending Rithvik's deployment integration.
+- `pnpm db:migrate` applies numbered SQL transactionally, under an advisory lock, with immutable SHA-256 migration checksums. Migrations are an explicit operator action, never applied automatically at startup. Choose a dedicated TorqueCode database; never point migrations at an unknown existing database. Compiled builds include migration SQL.
+- `auth_users`: UUID identity, lowercase unique email, Argon2id hash (19 MiB, 2 iterations, parallelism 1). Email case is intentionally ignored; password whitespace is preserved. Credentials require a valid email <=254 characters and password 12–128 characters; auth bodies are capped at 2 KiB. No email verification/password reset is included in K2.
+- POST `/auth/register` returns 201 `{user:{user_id,email}}`; duplicate email returns 409. Registration does not log in. POST `/auth/login` returns 200 with the same public user and a fresh 256-bit cookie token; invalid account/password returns identical 401 errors and performs Argon2 verification against a dummy hash for missing accounts.
+- GET `/auth/me` is the protected endpoint. Identity is derived exclusively from the session cookie. POST `/auth/logout` deletes only the presented session and clears its cookie (204, idempotent). `auth_sessions` holds SHA-256 token hashes, never raw tokens; expiry is seven days with no sliding extension. Expired rows are rejected by SQL and removed on subsequent login.
+- Cookies: HttpOnly, Path=/, SameSite=Strict, Max-Age/Expires. HTTPS origins use Secure and `__Host-tc_session` without Domain; HTTP is restricted to loopback development and uses `tc_session`. NODE_ENV=production requires HTTPS. Browser/API traffic must use the configured same origin (e.g. reverse proxy); no cross-origin CORS integration is added.
+- Exact Origin is required on every state-changing request in auth mode, including register/login/logout; absent, `null`, foreign and lookalike origins fail before parsing/SQL. CLI callers must supply Origin. Auth responses use Cache-Control: no-store. Public TypeBox responses exclude hashes and session secrets.
+- Database rate counters allow 20 attempts/IP and 10/account in fixed 15-minute windows shared by register/login and across app processes. Successful attempts count too. Keys are hashed; expired counters are cleaned on credential attempts. X-Forwarded-For is not trusted. Each app allows at most two in-flight credential operations and rejects excess work with 429/Retry-After. Multi-instance global work limits and edge throttling remain deployment concerns.
+- `pnpm test:auth` always creates/removes its own PostgreSQL cluster with a private Unix socket, no TCP listener, rejecting TCP auth. It ignores inherited DATABASE_URL. PostgreSQL binaries must be installed (`pg_config`, optionally PG_BIN). `pnpm test` includes it; unavailable PostgreSQL now explicitly skips (TORQUECODE_REQUIRE_DB=1 requires it), while launched migration/assertion failures still fail. A skipped integration suite in a direct Vitest run is not PostgreSQL verification. In this Codex sandbox, initdb is blocked by shmget permissions (an environment limitation). Karthik reported a successful host-terminal test:auth run on 2026-10-31: 1/1 file, 9/9 real PostgreSQL auth tests passed. See status log for evidence attribution.
+- New public auth schemas and `/auth/me` inventory are additive; ten seams and assessment Session remain unchanged. Pranav/Rithvik module implementations are untouched. Empty-topic and Novice-only report scoring policies remain unresolved for later integration.

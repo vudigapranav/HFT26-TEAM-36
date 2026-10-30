@@ -3,25 +3,30 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/api/db/migrations && cp api/db/migrations/*.sql dist/api/db/migrations/",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev": "node --import tsx api/server.ts",
     "start": "node dist/api/server.js",
     "test": "vitest run --config vitest.config.ts",
     "smoke:seams": "node --import tsx api/smoke-seams.ts",
     "test:seed1": "node --import tsx api/check-seed.ts",
-    "openapi": "node --import tsx api/openapi.ts"
+    "openapi": "node --import tsx api/openapi.ts",
+    "db:migrate": "node --import tsx api/db/command.ts"
   },
   "dependencies": {
-    "@torquecode/contracts": "workspace:*",
+    "@fastify/cookie": "^11.1.5",
     "@fastify/swagger": "^9.0.0",
     "@fastify/type-provider-typebox": "^6.3.0",
+    "@torquecode/contracts": "workspace:*",
     "ajv-formats": "^3.0.1",
+    "argon2": "^0.45.1",
     "fastify": "5.12.7",
+    "pg": "^8.23.1",
     "typebox": "1.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.0.0",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
