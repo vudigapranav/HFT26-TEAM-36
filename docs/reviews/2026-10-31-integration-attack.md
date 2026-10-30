@@ -50,3 +50,17 @@ Regression test: point `DOCKER_HOST` at a non-existent socket ⇒ result `kind: 
 **Fix (Karthik, `api/assessments.ts`):** if the runner status says unavailable, return **503 before calling the
 runner**, and never log a run/submit event for a 503. Re-check readiness every ~10 s instead of only at startup,
 so a Docker Desktop crash mid-demo becomes a clear 503, not a zero score.
+
+## Update 01:55 — PR #19 (Rithvik: fail-closed runner + R5 guarded assistant) merged
+
+- **Finding 7: fixed and verified.** Same reproduction (RUNNER=docker, daemon down): the API now returns
+  **503 SANDBOX_UNAVAILABLE**, nothing is graded (report 0/5 from no runs), and no docker socket path reaches the client.
+  The runner now has a cached daemon health check, a cidfile check ("container never created" ⇒ unavailable whatever the
+  exit code), and scrubs docker's own text from candidate output.
+- R5 guarded assistant reviewed: public-only, nonce-delimited context; deterministic input guard (overrides, prompt or
+  reference extraction, encoding/translation/pseudocode laundering, roleplay, secrets, injection planted in the files);
+  output guard (code-line limits, similarity to the reference resolved server-side, disclosure/secret patterns); one
+  bounded regeneration, then a generic block; every block logged as assistant_blocked / extraction_flagged.
+- Verified on merged main: typecheck clean; **212 tests pass** (incl. 65 assistant/runner-infra tests); attack suite 39/39.
+- **Not yet wired:** `assistantReply` and `nextHint` from llm/ aren't connected to the API (Karthik K10:
+  POST /assessments/:id/assistant, Adept/Master only). Real-model behaviour still needs one live smoke with the key.
