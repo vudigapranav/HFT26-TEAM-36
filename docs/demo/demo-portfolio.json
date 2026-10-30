@@ -1,0 +1,29 @@
+{
+  "candidate": { "name": "Ananya Raghavan", "email": "ananya.raghavan@example.com" },
+  "projects": [
+    {
+      "name": "RouteLedger",
+      "description": "Delivery-tracking backend for a small courier startup. Drivers post location pings, dispatchers query live routes, and a nightly job summarises late deliveries per region.",
+      "tech_stack": ["fastapi", "postgres", "redis", "docker"],
+      "role": "Backend developer",
+      "highlights": [
+        "Designed REST endpoints for pings, routes and delivery summaries",
+        "Deduplicated repeated driver pings with a hash map keyed by driver and minute",
+        "Cut a slow summary query by pre-aggregating per-region counts"
+      ]
+    },
+    {
+      "name": "ClubDesk",
+      "description": "Event-registration API for college clubs. Members sign up for events, organisers export attendance, and seat limits are enforced per event.",
+      "tech_stack": ["flask", "mysql", "docker"],
+      "role": "Backend lead",
+      "highlights": [
+        "Implemented waitlist promotion when a registered member cancels",
+        "Merged two sorted attendance exports with a two-pointer pass"
+      ]
+    }
+  ],
+  "tech_stack": ["python", "sql"],
+  "skills": ["rest-apis", "caching", "sql"],
+  "dsa_topics_solved": ["arrays", "hashing", "two_pointers", "sliding window", "sorting"]
+}

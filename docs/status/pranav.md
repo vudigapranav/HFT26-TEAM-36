@@ -89,3 +89,10 @@ Newest entries at the bottom. Written by `/ship`.
 - Seams/contracts affected: none
 - Teammates should know: the "What's real today" table lists only what's merged on main @ 6793cee. When K10/K7/K5/K6/R3/R6/frontend merge, update that table and the "In progress" line. deploy/README.md is linked but doesn't exist yet. Rithvik, please create it in R6. Demo/live URLs are placeholders. No test counts or performance numbers are claimed.
 - Next: merge P6–P9 PRs; review K10.
+
+## 2026-10-31 03:30 — P10 — demo data, demo script, pitch facts
+- Changed: docs/demo/demo-portfolio.json, docs/demo/demo-portfolio-injection.json, docs/demo/DEMO_SCRIPT.md, docs/demo/PITCH_FACTS.md. Docs only.
+- Seams/contracts affected: none
+- Verified: both portfolios run through the real parsePortfolioDetailed. Demo → backend (0.94), topics arrays/hashing/two_pointers/sorting, 0 warnings, 0 injection flags. Injection → 2 flags (projects[0].description, projects[0].highlights[1]). On main @ 7313627: typecheck clean; pnpm test 222 passed / 28 skipped (Docker not running, PostgreSQL harness skipped) + 9 Python passed. Every pitch number names its commit; all cited commits are ancestors of main.
+- Teammates should know: **Aryan**, use only docs/demo/PITCH_FACTS.md for slide numbers. **Akshit**, DEMO_SCRIPT.md is the click path the frontend must support, and every click is marked FE. **Karthik/Rithvik**, the script marks the Unlock/Upgrade, Adept and assistant steps as needing K10, K7 and R6, each with a cut line. Update the tags as those merge.
+- Next: re-check DEMO_SCRIPT tags and PITCH_FACTS numbers at feature freeze.
