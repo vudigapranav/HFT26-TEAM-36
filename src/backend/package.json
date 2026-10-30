@@ -11,7 +11,8 @@
     "smoke:seams": "node --import tsx api/smoke-seams.ts",
     "test:seed1": "node --import tsx api/check-seed.ts",
     "openapi": "node --import tsx api/openapi.ts",
-    "db:migrate": "node --import tsx api/db/command.ts"
+    "db:migrate": "node --import tsx api/db/command.ts",
+    "llm:smoke": "node --env-file-if-exists=../../.env --import tsx llm/smoke.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",

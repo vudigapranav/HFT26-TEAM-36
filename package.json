@@ -16,6 +16,7 @@
     "ownership:check": "node scripts/check-ownership.mjs",
     "test:python": "uv run --project src/backend --locked pytest src/backend/tests/runner/test_reporter.py -q -p no:cacheprovider",
     "test:auth": "pnpm --filter @torquecode/contracts build && node scripts/test-auth.mjs",
-    "db:migrate": "pnpm --filter @torquecode/backend db:migrate"
+    "db:migrate": "pnpm --filter @torquecode/backend db:migrate",
+    "llm:smoke": "pnpm --filter @torquecode/backend llm:smoke"
   }
 }
