@@ -16,7 +16,7 @@ export type InternalRunResult = {
   tests: (TestResult & { visibility: 'visible' | 'hidden' })[];
   passed: number; total: number; stdout: string; stderr: string; timed_out: boolean;
 };
-export type Gate = { gate: 'schema' | 'topics' | 'imports' | 'reference' | 'differential' | 'starter' | 'examples' | 'performance' | 'leakage'; status: 'pass' | 'fail'; reason: string };
+export type Gate = { gate: 'schema' | 'topics' | 'imports' | 'format' | 'reference' | 'differential' | 'starter' | 'examples' | 'performance' | 'leakage'; status: 'pass' | 'fail' | 'skipped'; reason: string };
 export type ValidationReceipt = { task_id: string; valid: boolean; gates: Gate[] };
 export type Session = { id: string; user_id: string; started_at: string; expires_at: string; current_tier: Tier; status: 'active' | 'finished' };
 export type Event = { session_id: string; task_id: string; ts: string; source: 'server' | 'client'; type: 'file_edit_snapshot' | 'run' | 'submit' | 'hint_request' | 'hint_served' | 'assistant_message' | 'assistant_blocked' | 'extraction_flagged' | 'tab_hidden' | 'tab_visible' | 'copy' | 'paste' | 'tier_unlocked' | 'tier_upgraded' | 'session_end'; payload: Record<string, unknown> };

@@ -9,10 +9,11 @@ import { runSeedTests } from '../runner/local/seed-runner.js';
 import { DEFAULT_RUNNER_IMAGE } from './runner-status.js';
 import { createDevPorts } from './dev-stubs.js';
 import { chat } from '../llm/featherless.js';
+import { createValidationEngine } from '../generation/validate.js';
 
 // Only API wiring changes when Rithvik's isolated runner/LLM implementations merge.
 export function createWiredPorts(seed: PrivateTask, overrides: Partial<Ports> = {}): Ports {
-  return { ...createDevPorts(), parsePortfolio, quiz, calculateAie, buildReport, chat,
+  const wired: Ports = { ...createDevPorts(), parsePortfolio, quiz, calculateAie, buildReport, chat,
     // The default instance captures env at import. Normalize an explicit empty image without changing R2.
     runTests: process.env.RUNNER === 'docker'
       ? process.env.RUNNER_IMAGE === '' ? createDockerRunner({ image: DEFAULT_RUNNER_IMAGE }) : runTestsInDocker
@@ -24,4 +25,9 @@ export function createWiredPorts(seed: PrivateTask, overrides: Partial<Ports> = 
         kind: 'unavailable', code: 'NOT_IMPLEMENTED', message: 'Hint unavailable',
       };
     }, ...overrides };
+  return {
+    ...wired,
+    validateTask: overrides.validateTask ??
+      createValidationEngine(wired.runTests),
+  };
 }

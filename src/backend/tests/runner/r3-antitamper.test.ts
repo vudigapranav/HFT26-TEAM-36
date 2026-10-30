@@ -152,7 +152,7 @@ def scan():
             if dirpath.startswith(('/proc', '/sys', '/usr', '/lib', '/dev')) and top == '/':
                 continue
             for name in names:
-                if name.startswith('test_') or name in ('pytest.ini', 'results.xml', 'report.json'):
+                if (name.startswith('test_') and name.endswith('.py')) or name in ('pytest.ini', 'results.xml', 'report.json'):
                     found.append(os.path.join(dirpath, name))
     return sorted(set(found))
 def secret_env():

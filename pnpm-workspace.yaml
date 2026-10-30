@@ -4,3 +4,4 @@ packages:
   - src/frontend
 allowBuilds:
   argon2: false
+  esbuild: true
