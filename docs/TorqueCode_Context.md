@@ -139,11 +139,11 @@ Backend module ownership, task order and milestones are in **`docs/TorqueCode_Ba
 5. **The 60-minute assessment** — one single session. **[LOCKED]** The team stated clearly: *"This is not a multiple-session thing. Single session, sixty minutes."*
    - **Everyone starts at the same point: Novice. [LOCKED]** There is no tier choice before the assessment starts.
    - Novice has **no AI assistant**. **[PS]**
-   - When the candidate completes the Novice work well and fast, the **next tier unlocks**. **[LOCKED]**
+   - When the candidate completes the Novice work well and fast, the **next tier unlocks**. **[LOCKED]** Exact rule: the next tier unlocks when **all tests (visible + hidden) of the current tier's final submit pass**. **[LOCKED — Pranav, 2026-10-31]** (§15, Q1)
    - **Upgrading is the candidate's choice, not automatic. [LOCKED]** Once unlocked, they can choose to move up, or stay. They never retake the whole test to move up.
    - Adept and Master include the **guarded AI assistant** beside the editor. **[PS]**
-   - Time split across tiers: one teammate suggested **~20 minutes per tier**. **[OPEN]**
-   - What happens if a candidate can't solve Adept (move down? stay?) is **[OPEN]**.
+   - Time split across tiers: **Novice 15 min, Adept 20 min, Master 25 min** (60 in total). **[LOCKED — Pranav, 2026-10-31]** (§15, Q1)
+   - **No demotion.** A candidate who can't solve Adept or Master stays on that tier; declining an upgrade means they keep working on the current tier. **[LOCKED — Pranav, 2026-10-31]** (§15, Q3)
 6. **Report.** Generated right after the session: task-wise metrics, test pass rates, time taken, AIE score, final outcome, plus where the candidate should focus. Stored behind login. **[PS + LOCKED]**
 
 ---
@@ -304,7 +304,7 @@ The recordings mentioned MCQs, debugging, direct coding, LeetCode-type DSA, syst
 
 **A3. Assessment session**
 - One session = 60 minutes. Timer is **server-authoritative**: autosave files, resume after a page refresh, auto-submit at expiry.
-- Tier state machine: `novice_active → adept_unlocked → adept_active → master_unlocked → master_active → finished`. Unlock rules and time split are **[OPEN]**.
+- Tier state machine: `novice_active → adept_unlocked → adept_active → master_unlocked → master_active → finished`. Unlock rule, time split and no-demotion are **[LOCKED — Pranav, 2026-10-31]** (§15, Q1 and Q3).
 - The candidate may only edit allow-listed files in each task.
 
 **A4. Execution runner (sandbox)**
@@ -505,7 +505,7 @@ Design rules:
 - No AI used **and** failed → not a free 20% (the `gate` term).
 - Running tests repeatedly without code changes doesn't count.
 - Show the breakdown in the report so the score is explainable.
-- Novice has no assistant, so how AIE applies there is **[OPEN]** (§15, Q4).
+- AIE is computed for **Adept and Master tasks only**; Novice is scored on correctness alone, and a session with no attempted Adept/Master task scales correctness to 100. **[LOCKED — Pranav, 2026-10-31]** (§15, Q4)
 
 **Decided by Pranav [LOCKED]** — exact definitions for the formula above. The scorer, the report and the frontend all use these.
 
@@ -553,10 +553,10 @@ Frontend responsibilities:
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q1 | How is the 60 minutes split across tiers, and what exactly unlocks the next tier (all Novice tests passed? within a time limit?) | Novice ~15 min, Adept ~20, Master ~25; unlock when all Novice hidden tests pass. |
+| Q1 | How is the 60 minutes split across tiers, and what exactly unlocks the next tier (all Novice tests passed? within a time limit?) | **[LOCKED — Pranav, 2026-10-31]** Novice 15 min, Adept 20, Master 25. The next tier unlocks when all tests (visible + hidden) of the current tier's final submit pass. Upgrading is the candidate's choice. |
 | Q2 | Onboarding quiz: what does it decide, and is it inside the 60 minutes? | Outside the 60 minutes, about one minute as the team said, fixed MCQ bank (no LLM), picks one focus lane **among the domains already claimed** in the JSON, never adding new topics. |
-| Q3 | If a candidate fails Adept, do they drop back, or stay? If they decline an upgrade, what do they do with the leftover time? | No demotion; they keep working; leftover time is simply unused or spent on the current tier. |
-| Q4 | How does the 20% AIE score apply to Novice tasks? | AIE computed over Adept/Master only; Novice scored on correctness alone. |
+| Q3 | If a candidate fails Adept, do they drop back, or stay? If they decline an upgrade, what do they do with the leftover time? | **[LOCKED — Pranav, 2026-10-31]** No demotion. Declining an upgrade means they keep working on the current tier. |
+| Q4 | How does the 20% AIE score apply to Novice tasks? | **[LOCKED — Pranav, 2026-10-31]** AIE is computed over Adept/Master only; Novice is scored on correctness alone. A session with no attempted Adept/Master task scales correctness to 100. |
 | Q5 | Execution engine: self-hosted Judge0 or our own Docker runner? | Own Docker runner on one machine, since Judge0 is one more service to install and configure on the host. Decide in hour one. |
 | Q6 | Backend language and frontend framework? | Backend: decided by the backend team in K0 (proposal: TypeScript, Python where needed — backend plan §0.1). Frontend: whatever Pranav and Akshit are fastest in. |
 | Q7 | Supported languages in the MVP? | Python only first, then JavaScript/Node. |
