@@ -41,7 +41,8 @@
     "scripts/*",
     ".gitignore",
     ".env.example",
-    "src/backend/uv.lock"
+    "src/backend/uv.lock",
+    ".gitattributes"
   ],
   "rithvik": [
     "src/backend/runner/*",

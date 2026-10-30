@@ -1,26 +1,38 @@
-import { afterEach, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../api/app.js';
 import { createWiredPorts } from '../../api/wiring.js';
 import { AssessmentStore } from '../../api/assessment-store.js';
-import { loadSeed } from '../../runner/local/seed-runner.js';
+import { checkResponseContract } from '../helpers/response-contract.js';
+import type { RunnerStatus } from '../../api/runner-status.js';
+import { checkRunner } from '../../api/runner-status.js';
+import type { PrivateTask } from '../../contracts/internal.js';
+import { inspectDockerImage } from '../../api/runner-status.js';
+import type { Ports } from '../../contracts/seams.js';
+import { runTestsInDocker } from '../../runner/dockerRunner.js';
+import { runSeedTests, loadSeed } from '../../runner/local/seed-runner.js';
 import { hashEditableFiles } from '../../scoring/aie.js';
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
-afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
+afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); vi.unstubAllEnvs(); });
 const origin = 'http://localhost:5173';
 const portfolio = { candidate: { name: 'Candidate', email: 'candidate@example.org' }, projects: [], tech_stack: ['python'], skills: ['sql'], dsa_topics_solved: [] };
-async function setup() {
-  const seed = await loadSeed();
+async function setup(options: { runTests?: Ports['runTests']; runner?: 'immutable_seed_only' | 'isolated'; runner_status?: RunnerStatus; seed?: PrivateTask } = {}) {
+  const seed = options.seed ?? await loadSeed();
   const store = new AssessmentStore();
   let time = Date.now();
-  const app = await buildApp({ ports: createWiredPorts(seed), assessment: {
-    store, seed, origin, now: () => time,
+  const app = await buildApp({ ...(options.runner_status ? { runner: options.runner_status } : {}), ports: createWiredPorts(seed, { runTests: options.runTests ?? runSeedTests }), assessment: {
+    store, seed, origin, now: () => time, runner: options.runner ?? 'immutable_seed_only', ...(options.runner_status ? { runner_status: options.runner_status } : {}),
     // Explicit injected identity fixture; real server uses PostgreSQL cookie sessions.
     authenticate: async request => typeof request.headers['x-test-user'] === 'string' ? request.headers['x-test-user'] : undefined,
   } });
   apps.push(app);
-  const call = (method: 'GET'|'POST'|'PUT', url: string, payload?: object, user = 'alice') => app.inject({ method, url,
-    headers: { origin, 'x-test-user': user }, ...(payload ? { payload } : {}) });
+  const call = async (method: 'GET'|'POST'|'PUT', url: string, payload?: object, user = 'alice') => {
+    const response = await app.inject({ method, url, headers: { origin, 'x-test-user': user }, ...(payload ? { payload } : {}) });
+    checkResponseContract(method, url, response);
+    return response;
+  };
   return { app, seed, store, call, advance: (ms: number) => { time += ms; } };
 }
 
@@ -70,8 +82,12 @@ it('drives real intake, quiz, immutable seed run/submit, hints and report withou
 
 it('enforces identity, origin, ownership, server-side input and runner trust', async () => {
   const { app, call, seed } = await setup();
-  expect((await app.inject('/onboarding-quiz')).statusCode).toBe(401);
-  expect((await app.inject({ method: 'POST', url: '/portfolio', headers: { 'x-test-user': 'alice', origin: 'https://evil.example' }, payload: portfolio })).statusCode).toBe(403);
+  const unauthenticated = await app.inject('/onboarding-quiz');
+  checkResponseContract('GET', '/onboarding-quiz', unauthenticated);
+  expect(unauthenticated.statusCode).toBe(401);
+  const foreign = await app.inject({ method: 'POST', url: '/portfolio', headers: { 'x-test-user': 'alice', origin: 'https://evil.example' }, payload: portfolio });
+  checkResponseContract('POST', '/portfolio', foreign);
+  expect(foreign.statusCode).toBe(403);
   await call('POST', '/portfolio', portfolio);
   const created = await call('POST', '/assessments', {});
   const id = created.json().assessment_id;
@@ -138,4 +154,134 @@ it('rejects missing portfolios, duplicate assessments and exhausted hints', asyn
     expect(result.json().level).toBe(level);
   }
   expect((await call('POST', `/assessments/${id}/hint`, {})).statusCode).toBe(409);
+});
+
+
+it('accepts huge portfolios with cap warnings, retaining the global limit elsewhere', async () => {
+  const { call } = await setup();
+  const huge = JSON.parse(readFileSync('tests/fixtures/portfolios/huge.json', 'utf8'));
+  const uploaded = await call('POST', '/portfolio', huge);
+  expect(uploaded.statusCode).toBe(200);
+  expect(uploaded.json().warnings.length).toBeGreaterThan(0);
+  const created = await call('POST', '/assessments', {});
+  const oversized = await call('POST', `/assessments/${created.json().assessment_id}/events`, { padding: 'x'.repeat(270000) });
+  expect(oversized.statusCode).toBe(413);
+  expect((await call('POST', '/portfolio', { padding: 'x'.repeat(1048576) })).statusCode).toBe(413);
+});
+
+it('rejects all non-task paths before invoking even the Docker seam', async () => {
+  const runTests = vi.fn<Ports['runTests']>(async () => ({ kind: 'unavailable', code: 'SANDBOX_UNAVAILABLE', message: 'test boundary' }));
+  const { call, seed } = await setup({ runTests, runner: 'isolated' });
+  await call('POST', '/portfolio', portfolio);
+  const created = await call('POST', '/assessments', {});
+  expect(created.json().runner).toBe('isolated');
+  const base = `/assessments/${created.json().assessment_id}/tasks/${seed.task_id}`;
+  for (const path of ['tests/test_visible.py', 'conftest.py', 'pytest.ini', '../x', '/tmp/x.py', 'app/new.py', 'app/../summary.py']) {
+    for (const suffix of ['run', 'submit', 'files']) {
+      const result = await call(suffix === 'files' ? 'PUT' : 'POST', `${base}/${suffix}`, { files: [{ path, content: 'bad', editable: true }] });
+      expect(result.statusCode).toBe(400);
+    }
+  }
+  expect(runTests).not.toHaveBeenCalled();
+});
+
+it('maps runner unavailable to 503 with no run/submit event or grade, using trusted task artifacts', async () => {
+  const runTests = vi.fn<Ports['runTests']>(async () => ({ kind: 'unavailable', code: 'SANDBOX_UNAVAILABLE', message: 'no docker' }));
+  const runner_status: RunnerStatus = { runner: 'isolated', available: true, image: dockerImage };
+  const { call, seed, store } = await setup({ runTests, runner: 'isolated', runner_status });
+  await call('POST', '/portfolio', portfolio);
+  const created = await call('POST', '/assessments', {});
+  const id = created.json().assessment_id;
+  for (const mode of ['run', 'submit']) {
+    const response = await call('POST', `/assessments/${id}/tasks/${seed.task_id}/${mode}`, { files: seed.files.map(f => ({ ...f, content: f.content + '\n# edit\n' })) });
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error.code).toBe('SANDBOX_UNAVAILABLE');
+  }
+  expect(store.assessments.get(id)!.events).toHaveLength(0);
+  expect(store.assessments.get(id)!.runs).toHaveLength(0);
+  expect(runTests.mock.calls[0]![0].tests).toEqual(seed.tests);
+  expect(runTests.mock.calls[0]![0].limits).toEqual(seed.limits);
+  expect((await call('GET', `/assessments/${id}/status`)).json().runner_available).toBe(false);
+  expect((await call('GET', '/health')).json()).toMatchObject({ status: 'degraded', runner_available: false, candidate_execution: false });
+  runTests.mockImplementation(runSeedTests);
+  expect((await call('POST', `/assessments/${id}/tasks/${seed.task_id}/run`, { files: seed.files })).statusCode).toBe(200);
+  expect((await call('GET', '/health')).json()).toMatchObject({ status: 'ok', runner_available: true, candidate_execution: true });
+});
+
+const dockerImage = process.env.RUNNER_IMAGE || 'torquecode-runner-python:dev';
+const dockerReady = spawnSync('docker', ['image', 'inspect', dockerImage], { stdio: 'ignore', timeout: 5000 }).status === 0;
+describe.skipIf(!dockerReady)('Docker through the assessment API (real image)', () => {
+  it('grades edited correct/wrong code and the starter, preserving public boundaries and event hashes', async () => {
+    const { call, seed, store } = await setup({ runTests: runTestsInDocker, runner: 'isolated' });
+    await call('POST', '/portfolio', portfolio);
+    const created = await call('POST', '/assessments', {});
+    const id = created.json().assessment_id;
+    const base = `/assessments/${id}/tasks/${seed.task_id}`;
+    const correct = seed.reference_files.map(f => ({ ...f, content: f.content + '\n# candidate correction\n' }));
+    for (const [files, expected] of [[correct, 5], [seed.files, 3]] as const) {
+      const result = await call('POST', `${base}/submit`, { files });
+      expect(result.statusCode).toBe(200);
+      expect(result.json().passed).toBe(expected);
+      expect(result.json().stdout).toBe(''); expect(result.json().stderr).toBe('');
+      expect(result.body).not.toContain('test_single_day');
+      expect(store.assessments.get(id)!.events.at(-1)!.payload).toEqual({ run_id: result.json().run_id, files_hash: hashEditableFiles([...files]) });
+    }
+    const wrong = seed.files.map(f => ({ ...f, content: 'def peak_requests(counts):\n    return -1\n' }));
+    expect((await call('POST', `${base}/submit`, { files: wrong })).json().passed).toBeLessThan(5);
+    const starter = await call('POST', `${base}/run`, { files: seed.files });
+    expect(starter.statusCode).toBe(200);
+    for (const test of starter.json().visible) {
+      expect(test.status).toBe(seed.f2p_ids.includes(test.id) ? 'fail' : 'pass');
+    }
+    expect(starter.json().hidden).toBeNull();
+  }, 30000);
+});
+
+
+it('selects the requested seam without changing the local fixture runner', async () => {
+  const seed = await loadSeed();
+  vi.stubEnv('RUNNER', 'local');
+  expect(createWiredPorts(seed).runTests).toBe(runSeedTests);
+  vi.stubEnv('RUNNER', 'docker');
+  expect(createWiredPorts(seed).runTests).toBe(runTestsInDocker);
+});
+
+it('starts and reports degraded Docker health/state when the one-time image probe fails', async () => {
+  const inspect = vi.fn(async () => false);
+  const runner_status = await checkRunner({ RUNNER: 'docker', RUNNER_IMAGE: 'missing:test' }, inspect);
+  expect(inspect).toHaveBeenCalledExactlyOnceWith('missing:test');
+  const { call } = await setup({ runner_status });
+  const health = await call('GET', '/health');
+  expect(health.statusCode).toBe(200);
+  expect(health.json()).toMatchObject({ status: 'degraded', runner: 'isolated', runner_available: false, runner_image: 'missing:test' });
+  await call('POST', '/portfolio', portfolio);
+  const created = await call('POST', '/assessments', {});
+  expect(created.json()).toMatchObject({ runner: 'isolated', runner_available: false });
+});
+
+it('does not probe Docker in local mode and reports successful image availability', async () => {
+  const inspect = vi.fn(async () => true);
+  expect(await checkRunner({}, inspect)).toEqual({ runner: 'immutable_seed_only', available: true });
+  expect(inspect).not.toHaveBeenCalled();
+  expect(await checkRunner({ RUNNER: 'docker' }, inspect)).toMatchObject({ runner: 'isolated', available: true, image: 'torquecode-runner-python:dev' });
+  expect(inspect).toHaveBeenCalledTimes(1);
+});
+
+
+it('merges only client editable files and preserves task-owned immutable files', async () => {
+  const seed = await loadSeed();
+  const immutable = { path: 'app/constants.py', content: 'LIMIT = 10\n', editable: false };
+  const runTests = vi.fn<Ports['runTests']>(async () => ({ kind: 'unavailable', code: 'SANDBOX_UNAVAILABLE', message: 'boundary fixture' }));
+  const { call } = await setup({ seed: { ...seed, files: [...seed.files, immutable] }, runTests, runner: 'isolated' });
+  await call('POST', '/portfolio', portfolio);
+  const created = await call('POST', '/assessments', {});
+  const base = `/assessments/${created.json().assessment_id}/tasks/${seed.task_id}`;
+  expect((await call('POST', `${base}/run`, { files: [...seed.files, { ...immutable, editable: true, content: 'tamper' }] })).statusCode).toBe(400);
+  expect(runTests).not.toHaveBeenCalled();
+  expect((await call('POST', `${base}/run`, { files: seed.files })).statusCode).toBe(503);
+  expect(runTests.mock.calls[0]![0].files).toContainEqual(immutable);
+});
+
+it('the real bounded startup probe reports a missing image/runtime as unavailable', async () => {
+  expect(await inspectDockerImage('torquecode-k9-nonexistent-image:missing-startup-probe')).toBe(false);
 });
