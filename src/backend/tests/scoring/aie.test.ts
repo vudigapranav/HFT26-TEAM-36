@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Event, InternalRunResult, PrivateTask } from '../../contracts/internal.js';
+import type { Event, InternalRunResult, PrivateTask, Session } from '../../contracts/internal.js';
 import { calculateAie, computeAie, hashEditableFiles } from '../../scoring/aie.js';
+import { buildReportValue } from '../../scoring/report.js';
 
 const task: PrivateTask = {
   task_id: 't1', tier: 'adept', domain: 'backend', language: 'python', task_type: 'bug_fix', title: 'T',
@@ -75,5 +76,45 @@ describe('calculateAie (context §12 + Decided by Pranav)', () => {
     const r = calculateAie({ events: [run(1, 'a', 1), submit(2, 7)], runs, task });
     expect(r.kind).toBe('ok');
     if (r.kind === 'ok') expect(Object.keys(r.value).sort()).toEqual(['gate', 'hint_yield', 'independence', 'max', 'score', 'test_discipline']);
+  });
+});
+
+// P7 — R5 event contract: assistant_message only for delivered replies; a block emits assistant_blocked
+// (+ extraction_flagged for extraction attempts); an LLM outage emits nothing.
+describe('calculateAie vs R5 assistant events (P7)', () => {
+  const blockedAttempt = (ms: number) => [ev('assistant_blocked', ms), ev('extraction_flagged', ms)];
+  const noAi = () => aie([run(1, 'a', 0), run(4, 'b', 3), submit(5, 7)]);
+  const scoreOnly = ({ score, independence, hint_yield, test_discipline, gate, weighted_ai, ai_interactions }: ReturnType<typeof aie>) =>
+    ({ score, independence, hint_yield, test_discipline, gate, weighted_ai, ai_interactions });
+
+  it('blocked + extraction_flagged weigh 0 in Independence and HintYield but are integrity flags', () => {
+    const d = aie([run(1, 'a', 0), ...blockedAttempt(2), ...blockedAttempt(3), run(4, 'b', 3), submit(5, 7)]);
+    expect(d.weighted_ai).toBe(0);
+    expect(d.ai_interactions).toBe(0);
+    expect(d.independence).toBe(1);
+    expect(d.hint_yield).toBe(1);
+    expect(d.integrity_flags).toBe(2);
+    expect(scoreOnly(d)).toEqual(scoreOnly(noAi()));
+  });
+  it('an LLM outage (no events) changes nothing', () => {
+    const d = noAi();
+    expect(d.ai_interactions).toBe(0);
+    expect(d.integrity_flags).toBe(0);
+    expect(d.score).toBe(20);
+  });
+  it('6 assistant messages → Independence 0', () => {
+    const msgs = [2, 3, 4, 5, 6, 7].map(ms => ev('assistant_message', ms));
+    const d = aie([run(1, 'a', 0), ...msgs, run(8, 'b', 3), submit(9, 7)]);
+    expect(d.weighted_ai).toBe(6);
+    expect(d.independence).toBe(0);
+  });
+  it('report integrity_signals counts extraction_flagged and assistant_blocked', () => {
+    const session: Session = { id: 's', user_id: 'u', started_at: at(0), expires_at: at(60 * MIN), current_tier: 'adept', status: 'finished' };
+    const events = [run(1, 'a', 0), ...blockedAttempt(2), ...blockedAttempt(3), ev('assistant_message', 4), run(5, 'b', 3), submit(6, 7)];
+    const r = buildReportValue({ session, tasks: [task], runs, events });
+    expect(r.integrity_signals).toEqual(expect.arrayContaining([
+      { type: 'assistant_blocked', count: 2 }, { type: 'extraction_flagged', count: 2 },
+    ]));
+    expect(r.tasks[0]?.aie?.independence).toBe(0.83);
   });
 });

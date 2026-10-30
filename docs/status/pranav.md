@@ -61,3 +61,10 @@ Newest entries at the bottom. Written by `/ship`.
 - Changed: docs/reviews/2026-10-31-integration-attack.md (update + finding 7)
 - Teammates should know: Rithvik + Karthik — read finding 7 and fix before the demo (a closed Docker Desktop currently turns every run into a graded 0/2 instead of 503). Attack suite now 39/39; journey 17/17; 87 tests + 15 DB tests pass on main.
 - Karthik: pnpm-workspace.yaml still needs "- src/frontend" for Akshit.
+
+## 2026-10-31 02:30 — P7 — AIE scorer verified against R5 assistant events
+- Changed: src/backend/tests/scoring/aie.test.ts (4 new tests). No scoring code changed: every new test passed against the current scorer.
+- Seams/contracts affected: none
+- Teammates should know: proven — a blocked attempt (assistant_blocked + extraction_flagged) weighs 0 in Independence/HintYield and gives the same score as no AI use, but counts once per attempt in integrity_flags; an LLM outage (no events) changes nothing; 6 delivered assistant_message events → Independence 0; the report's integrity_signals lists both assistant_blocked and extraction_flagged counts. Rithvik's R5 event rules match the scorer as-is.
+- Checks: pnpm typecheck passed; pnpm test 216 passed / 28 skipped (PostgreSQL + Docker) + 9 Python passed; ownership check passed. Needs `uv sync --project src/backend --python 3.13 --locked` first, or 6 seed-runner tests fail with a missing .venv.
+- Next: P8 claims vs demonstrated
