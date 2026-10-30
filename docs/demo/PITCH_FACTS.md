@@ -113,7 +113,7 @@ Every task must pass **every** gate to count as valid. A gate that couldn't run 
 7. **Starter:** fails exactly the F2P tests and passes exactly the P2P tests.
 8. **Performance (Master):** the performance tests pass on all 3 reference runs and fail on the starter.
 - **Docker down →** the run-based gates are marked *skipped* → the task is **invalid**, never "valid by default".
-- **Honest caveat:** the *examples* gate currently passes once the schema gate has matched visible tests to the manifest. The *differential* gate checks that the 3 reference runs give identical results; it does **not** yet compare against a brute-force solution, as the context describes. Karthik's K5 follow-up is making both stricter. Say "8 deterministic gates" and don't claim brute-force differential testing.
+- **Receipt wording updated in PR #51 (`e1fc0cc`, merged as `62b808e`):** the *examples* receipt explicitly says no statement examples are declared; it is not proof that statement examples were checked. The *differential* receipt describes reference determinism across three runs, with no brute-force oracle supplied. Neither receipt establishes independent correctness. Don't claim brute-force differential testing.
 - **Where it's used:** wired as the `validateTask` seam. It will check every generated task once live generation (K6) lands. Its own tests: `src/backend/tests/generation/validate.test.ts`.
 
 ## 9. Honest limitations (say these if asked)
