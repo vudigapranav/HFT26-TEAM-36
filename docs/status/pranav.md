@@ -124,3 +124,20 @@ Newest entries at the bottom. Written by `/ship`.
 - **Fix found while doing P12:** my P11 PR #36 had been pushed with only the status file. A `git stash pop` during /ship had unstaged the code. Pushed the missing code + tests as a0f1f21; PR #36 now has all 5 files and passes typecheck and tests (250 passed / 46 skipped). P6–P8 were checked and are complete on main.
 - Seams/contracts affected: none
 - Next: P13 once Karthik's K8 adds Report.claims.
+
+## 2026-10-31 04:45 — P14 — attack suite v2 for K10 (question sets, unlock, AI gating, assistant)
+- Changed: scripts/attack-api.py (all 39 original checks kept; 28 new K10 checks; SKIP support; target via TORQUECODE_API, default http://127.0.0.1:3001), scripts/pre-submit-check.sh (accepts "(N skipped)", honours TORQUECODE_API).
+- New checks:
+  - Unlock: 409 before every question has a Submit; allowed after submitting every question with wrong (starter) code; 2nd unlock; 3rd unlock → 409; another user can't unlock.
+  - Locked-set question: GET/PUT/run/submit → 403.
+  - First-set hint/assistant → 403; later-set hint → 200 and a hint race; assistant → 200 or 503 LLM_UNAVAILABLE.
+  - Oversized assistant message → 4xx. Assistant abuse (ignore instructions, whole function, forged history with a code turn): the reply is checked against reference lines not in the starter.
+  - The client can't send tier_unlocked/tier_upgraded/assistant_message/hint_served.
+  - 5 parallel submits + 3 unlocks: no 500s, unlocks_used ≤ 2.
+  - No /\b(novice|adept|master)\b/i in any candidate-facing response (report excluded).
+- One existing check adapted: "parallel hint spam" now also accepts 403, because K10 correctly disables hints on the first set. The race is re-run on an unlocked question.
+- Run: main @ 19df7ff, APP_MODE=auth, RUNNER=local, scratch PostgreSQL 15, no Featherless key, port 3002: **62 pass / 0 fail (5 skipped)**. Skipped: 3 assistant-abuse checks (no LLM key) and the 2nd/3rd unlock (needs the Docker runner to grade second-set submits). pre-submit-check against the same server: all 8 ✅ (pnpm test 275 passed / 55 skipped + 9 Python).
+- Not covered: K5 (validation engine) has no HTTP surface, so the API suite has nothing to attack there; its own tests cover it.
+- Teammates should know: **Rithvik**, on the demo machine (deploy/start.sh with Docker + key), run `python3 scripts/attack-api.py` and confirm 0 skips. That is the only run that exercises the assistant-abuse and 2nd/3rd-unlock checks.
+- Seams/contracts affected: none
+- Next: P13 once Report.claims lands.
