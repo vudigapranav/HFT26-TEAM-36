@@ -2,7 +2,7 @@
 
 Only things merged on `main`, checked at **`main` @ `7313627`** (2026-10-31, after PR #25). Every number names the commit it comes from. If a fact isn't here, don't put it on a slide. Ask Pranav first.
 
-**Not on main yet, so don't claim it as working:** the three-tier flow with Upgrade (K10), the assistant HTTP endpoint (K10), Adept/Master tasks (K7), the validation engine and live task generation (K5/K6), sandbox anti-tamper hardening (R3), demo-machine deployment (R6) and the frontend. Pitch these as "in progress" or roadmap.
+**Not on main yet, so don't claim it as working:** the three-tier flow with Upgrade (K10), the assistant HTTP endpoint (K10), Adept/Master tasks (K7), the validation engine and live task generation (K5/K6), demo-machine deployment (R6) and the frontend. Pitch these as "in progress" or roadmap.
 
 ---
 
@@ -35,7 +35,8 @@ Hostile cases Rithvik ran (`37e14cd`, `773e8a8`):
 - A fork bomb was contained by the 32-process limit.
 - About 20 MB of output was captured as exactly **65,536 bytes**.
 - The tampering cases Rithvik tested (`sys.exit(0)`, `os._exit(0)`, a naive forged report, deleted tests) were graded **0 passed**.
-- **Not yet closed:** Rithvik documents that candidate code still shares the pytest interpreter, so a deliberate, consistent forged report can still pass. R3 is fixing this. Until R3 is merged, don't say "tamper-proof"; say "tampering we tested is caught; full isolation of grading is in progress".
+- **R3 split-container grading (PR #29, merged `fc4f39f`, 31 Oct ~03:00):** candidate code runs in a separate untrusted container and never sees the test source, expected outputs or the report. Reading the test files for answers, forged reports, forced exits and pytest monkeypatching no longer change a grade (20 real-Docker tests, reported by Rithvik). Cost: about +208 ms per run (Rithvik's laptop, 5 runs).
+- **Honest limits:** hidden-test *inputs* are visible to the candidate's function (it receives them as arguments); a kernel or Docker escape is out of scope. Say "tampering with grading is blocked by design", not "unhackable".
 - Network, DNS and write probes were all blocked.
 
 If Docker is down, the API returns **503 SANDBOX_UNAVAILABLE** and records no grade, instead of a fake 0 (finding 7, fixed and verified in `4fbaeee`).
@@ -88,5 +89,5 @@ If Docker is down, the API returns **503 SANDBOX_UNAVAILABLE** and records no gr
 
 - It checks skills consistent with the portfolio, not who wrote the listed projects.
 - It can't detect AI on a second device; it only logs integrity signals.
-- The sandbox is hackathon-grade: candidate code currently shares the test interpreter (R3 is hardening this).
+- The sandbox is standard Docker isolation (hackathon-grade): candidate inputs are visible to candidate code, and container escape is out of scope.
 - Assistant guards are heuristics; hints can be wrong but are never used for grading.

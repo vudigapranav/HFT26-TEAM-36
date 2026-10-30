@@ -139,13 +139,15 @@ describe.skipIf(!dockerReady)('Docker runner (real containers)', () => {
   }, 60_000);
 
   it('huge output is capped per stream and still graded', async () => {
+    // R3: the candidate's own prints arrive on stderr (worker); stdout is the grader's pytest text.
     const result = ok(await runTests(fixtureRequest('huge_output'), context()));
+    expect(Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(limits.output_bytes);
+    expect(Buffer.byteLength(result.stderr)).toBeGreaterThan(limits.output_bytes - 4);
     expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(limits.output_bytes);
-    expect(Buffer.byteLength(result.stdout)).toBeGreaterThan(limits.output_bytes - 4);
     expect(result.tests.every(test => test.status === 'fail')).toBe(true);
   }, 60_000);
 
-  it('network, writes outside /tmp and secrets are blocked (trusted probe tests)', async () => {
+  it('the trusted grader container itself has no network and a read-only filesystem (probe tests)', async () => {
     const probe = testFile(`${fixtures}/cases/isolation_probe`, 'tests/test_isolation.py', 'visible');
     const result = ok(await runTests(fixtureRequest('ok', { tests: [...baseTests, probe] }), context()));
     expect(statuses(result)).toEqual(Object.fromEntries([...baseTests, probe].flatMap(t => t.ids).map(id => [id, 'pass'])));
@@ -158,10 +160,18 @@ describe.skipIf(!dockerReady)('Docker runner (real containers)', () => {
     expect(result.tests.some(test => test.status === 'fail')).toBe(true);
   }, 60_000);
 
-  it.each(['exit_at_import', 'hard_exit', 'forge_report', 'syntax_error'])('%s never produces a passing grade', async name => {
+  it.each(['exit_at_import', 'hard_exit', 'syntax_error'])('%s never produces a passing grade', async name => {
     const result = ok(await runTests(fixtureRequest(name), context()));
     expect(result.passed).toBe(0);
     expect(result.tests.every(test => test.status === 'error')).toBe(true);
+  }, 60_000);
+
+  it('forge_report: the forged report never reaches the grader, so the buggy code is graded as buggy', async () => {
+    // R2 could only detect this forgery (all error); with split containers it has no effect at all.
+    const forged = statuses(ok(await runTests(fixtureRequest('forge_report'), context())));
+    const buggy = statuses(ok(await runTests(fixtureRequest('buggy'), context())));
+    expect(forged).toEqual(buggy);
+    expect(Object.values(forged)).toContain('fail');
   }, 60_000);
 
   it('memory exhaustion is contained and graded as error', async () => {

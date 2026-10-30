@@ -236,8 +236,57 @@ Base: origin/main `4dbe31a` (R4 PR 18 merged; K9 wired `runTestsInDocker`). Bran
   - Without a reference resolver there is no similarity check, only the stricter code-volume policy.
 - No live-model run of R5 yet: the assistant's behaviour with real Qwen output is unmeasured. (Measured in R5-live below.)
 
+## 2026-10-31 02:51 — R3 — split-container grading (anti-tamper)
+Base: origin/main `7313627`. Branch `rithvik/r3-antitamper`. Design chosen by Rithvik: split containers.
+- **Problem (reproduced before the fix, real Docker, same buggy candidate):**
+  - A candidate that **reads the test files and returns their expected answers** scored **4/4 on the R2 runner** while being buggy.
+  - A forged JUnit report plus a forced exit could only be *detected* (0/4, all error), not prevented.
+  - After R3 both are graded exactly like the buggy code: 3/4, failing `test_case_insensitive`.
+- **Design (`runner/dockerRunner.ts` + `runner/harness/`):** two containers per run, same image.
+  - **worker (untrusted):** the candidate's files at `/work` (read-only) and the harness at `/harness` (read-only). No tests, no expected values, no report path, no writable mount; only a 64 MB tmpfs `/tmp`. Task limits apply (memory, CPU, pids, no network, non-root, caps dropped, no-new-privileges).
+  - **grader (trusted):** tests at `/grade` (read-only), our own pytest.ini and empty conftests, pytest, 256 MB / 64 pids / 16 MB tmpfs, no network. Candidate modules are import proxies (`ProxyFinder`). A name that resolves to a real stdlib or installed module is never proxied, so a candidate `iniconfig.py` can't impersonate pytest internals.
+  - **IPC is host-mediated** over each container's stdin/stdout:
+    - newline-framed JSON, at most 1 MiB per line and 10,000 calls per run;
+    - one request in flight; the reply id must match; the worker must send `ready` first;
+    - any malformed, oversized, unsolicited or wrong-id worker line kills the worker, and the affected tests are `error`.
+  - The codec is plain data only (no pickle, no eval): None/bool/int/finite float/str/list/tuple/dict/set/frozenset/bytes.
+  - The report leaves the grader on its own protocol stream, and the grade is taken from it. There is **no `/out` mount anywhere**, which closes the old unbounded-write path.
+  - Candidate prints go to the worker's stderr (`InternalRunResult.stderr`, capped). The grader's pytest text goes to `stdout` (capped). Docker CLI noise is removed from both.
+  - Timing: `wall_time_ms` counts **only time inside candidate code** (from sending a request until its reply, import included). Container start and pytest collection fall under a separate `startupBudgetMs` (default 20 s). The total lifetime is `wall_time_ms + startupBudgetMs`. A timeout kills both containers and marks every test `timeout`.
+  - Failure handling from PR 19 is kept: health check, both cidfiles, re-checking the daemon when a run isn't cleanly gradable, generic unavailable messages, bounded control calls, forced CLI kill, cleanup on every path. Stream `error` handlers stop EPIPE from a dead container from crashing the API process.
+  - Unsupported tasks: if a trusted test passes a non-plain argument, the run returns `unavailable` "Task not supported by the isolated runner". It is never graded and never falls back to in-process grading.
+- **Supported task format and the guarantees** are documented in `runner/harness/README.md` for Karthik and Aryan. Seed task 1 works **unchanged**: its tests use `from app.summary import peak_requests` with list/int values.
+- **Tests:**
+  - `tests/runner/r3-antitamper.test.ts`: **20 tests, all on real Docker.**
+    - Compatibility: seed task 1 keeps exact F2P/P2P (reference 5/5, starter fails exactly `f2p_ids` and passes `p2p_ids`); multi-file packages, constants, tuples, sets and `pytest.raises` all work.
+    - Attacks that fail to change the grade: reading the test files for expected answers; forged reports; forged report plus `os._exit(0)`; forged protocol frames written to every fd; monkeypatching pytest and builtins.
+    - Isolation probes from candidate code: test files, harness writes, the Docker socket, secret env, network, writes and symlinks outside /tmp, uid.
+    - Other cases: a pytest-dependency name hijack; `sys.exit(0)`; a 5 MB return value (error); 500-deep nesting; 3 MB stdout plus 3 MB stderr (capped, still graded); fork bomb; infinite loop; no state between runs; 3 simultaneous runs; an unsupported task gives unavailable; the public projection still hides hidden-test details.
+  - `tests/runner/docker-infra.test.ts`: the fake CLI now plays both containers through the real relay. 15 tests, adding malformed worker IPC (garbage and wrong id) gives error.
+  - `tests/runner/docker-runner.test.ts`: 32 tests. Huge output is now checked on `stderr`; `forge_report` is now graded identically to `buggy`.
+  - **Karthik's real-Docker API test passes with the new runner:** `tests/assessment/flow.test.ts › Docker through the assessment API (real image) › grades edited correct/wrong code and the starter, preserving public boundaries and event hashes` (8.5 s).
+- **Benchmark** (this laptop, Windows 11, Docker Desktop 29.8.0, 24 CPUs; 5 submit runs of a passing 4-test task after one warm-up):
+  - R2 single container: median **1554 ms** (1519–1617).
+  - R3 split: median **1762 ms** (1749–1795), so **+208 ms (+13%)** per run. The two containers start in parallel.
+  - The grader adds up to 256 MB / 64 pids per run on top of the task's limits.
+- **Verification:**
+  - `pnpm typecheck` OK. `tsc` build OK, and the compiled `dist/runner/dockerRunner.js` finds the harness (via `../../runner/harness`, or `RUNNER_HARNESS_DIR`) and grades seed task 1 at 5/5.
+  - Runner + LLM + contract suites: 193 passed, 4 failed (the Windows-only K1 local-runner tests).
+  - Full suite: **256 passed, 7 failed, 9 skipped (PostgreSQL)**. The 7 are the same `runner/local` Windows failures recorded for main: `.venv/bin/python` and POSIX `process.kill(-pid)`.
+- **Residual risks (not claimed solved):**
+  - **Hidden-test inputs are visible to candidate code**, since it receives the arguments. Inputs aren't confidential; expected outputs and test source are.
+  - Oracle inference through repeated Runs (visible tests only), as with any grader.
+  - Kernel or Docker container escape is out of scope; this is standard Docker isolation.
+  - Tasks outside the supported format (objects, mutation, identity, apps) return unavailable until they're adapted (see the README).
+  - The R0 manual probe `runner/images/python/sandbox-check.sh` is still the single-container design and still shows `forge_report` as a GAP. It is a probe, not the API path.
+- **Teammates should know:**
+  - **Karthik/Aryan (K7, K6):** write task tests to the supported format in `runner/harness/README.md`; plain-data function calls only. The validation engine (K5) should treat `unavailable: Task not supported by the isolated runner` as a rejected task.
+  - **Karthik:** no API or contract change is needed. `Ports['runTests']` and `InternalRunResult` are unchanged. Since R3, candidate prints arrive in `stderr` and pytest output in `stdout`, and the public projection still applies.
+  - **Deployment (R6):** the backend must be able to read `src/backend/runner/harness/` at runtime. It sits beside `dist/`, or set `RUNNER_HARNESS_DIR`.
+
+
 ## 2026-10-31 03:01 — R5-live — guarded assistant against the real model
-Base: origin/main `123e4c8`. Branch `rithvik/r5-live`; independent of R3 / PR 29.
+Base: origin/main `e850eaa` (R3 PR 29 merged). Branch `rithvik/r5-live`.
 - **Harness:** `pnpm llm:eval [ids]` (`llm/live-eval.ts`).
   - Uses the shared Featherless client and the real `createAssistant`, with seed task 1's public content set to the Adept tier. That's done only in the harness; the seed and API entitlement are untouched.
   - The output guard gets the real server-side reference resolver.
