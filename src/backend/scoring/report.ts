@@ -15,6 +15,7 @@ export const AI_TIERS: Tier[] = ['adept', 'master'];
 export const AIE_FALLBACK = 'scale_correctness' as const; // TODO(OPEN-Q4)
 const INTEGRITY_TYPES = ['tab_hidden', 'copy', 'paste', 'assistant_blocked', 'extraction_flagged'] as const;
 const TIER_ORDER: Tier[] = ['novice', 'adept', 'master'];
+const MAX_REPORT_TASKS = 20; // Report contract limit
 const r2 = (x: number) => Math.round(x * 100) / 100;
 const ms = (iso: string) => Date.parse(iso);
 
@@ -65,7 +66,7 @@ export function buildReportValue(input: { session: Session; tasks: PrivateTask[]
 
   // Focus areas: topics of tasks not fully solved, then behaviour signals from the AI score.
   const focus = new Set<string>();
-  for (const x of rows) if (!(x.final && x.final.total > 0 && x.final.passed === x.final.total)) for (const t of x.task.dsa_topics) focus.add(`Practice ${t.replace(/_/g, ' ')} (${x.task.tier} task not fully solved)`);
+  for (const x of rows) if (!(x.final && x.final.total > 0 && x.final.passed === x.final.total)) for (const t of x.task.dsa_topics ?? []) focus.add(`Practice ${t.replace(/_/g, ' ')} (${x.task.tier} task not fully solved)`);
   for (const x of aieRows) {
     if ((x.aie?.test_discipline ?? 1) < 0.5) focus.add('Run tests after each real code change before submitting');
     if ((x.aie?.independence ?? 1) < 0.5) focus.add('Try more before asking the assistant for hints');
@@ -78,7 +79,7 @@ export function buildReportValue(input: { session: Session; tasks: PrivateTask[]
   return {
     report_id: `report-${session.id}`.slice(0, 80),
     session_id: session.id,
-    tasks: rows.map(x => x.row),
+    tasks: rows.map(x => x.row).slice(0, MAX_REPORT_TASKS),
     final_score: Math.max(0, Math.min(100, final_score)),
     outcome,
     focus_areas: [...focus].slice(0, 50),

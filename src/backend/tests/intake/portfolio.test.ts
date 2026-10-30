@@ -91,3 +91,32 @@ describe('parsePortfolio — seam and bad input', () => {
     }
   });
 });
+
+describe('parsePortfolio — hardening (found by fuzzing)', () => {
+  it('drops whitespace-only stack/skill entries and dedupes case variants', () => {
+    const r = parsePortfolioDetailed({ candidate: { name: 'N', email: 'a+b@sub.example.org' }, projects: [],
+      tech_stack: [' React ', 'REACT', 'react'], skills: ['  ', 'SQL', 'sql'], dsa_topics_solved: ['  Arrays ', 'arrays', 'array-list'] });
+    if ('errors' in r) throw new Error(JSON.stringify(r.errors));
+    expect(Value.Check(CandidateProfile, r.profile)).toBe(true);
+    expect(r.profile.tech_stack).toEqual(['react']);
+    expect(r.profile.skills).toEqual(['sql']);
+    expect(r.profile.claimed_topics).toEqual(['arrays']);
+  });
+
+  it('never throws and only returns contract-valid profiles on 2,000 random inputs', () => {
+    let seed = 7; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+    const pick = <T,>(xs: T[]) => xs[Math.floor(rnd() * xs.length)] as T;
+    const junk = (d = 0): unknown => d > 3 ? pick([null, 1, ' ', 'x']) : pick([
+      () => null, () => rnd() * 1e9, () => pick(['', '  ', 'a'.repeat(5000), 'arrays', '__proto__']),
+      () => Array.from({ length: Math.floor(rnd() * 4) }, () => junk(d + 1)),
+      () => Object.fromEntries(Array.from({ length: Math.floor(rnd() * 4) }, () => [pick(['candidate', 'projects', 'tech_stack', 'skills', 'dsa_topics_solved', '__proto__']), junk(d + 1)])),
+    ])();
+    for (let i = 0; i < 2000; i++) {
+      const base: Record<string, unknown> = { candidate: { name: 'N', email: 'n@example.org' }, projects: [], tech_stack: ['python'], skills: ['sql'], dsa_topics_solved: ['arrays'] };
+      base[pick(Object.keys(base))] = junk();
+      const r = parsePortfolioDetailed(rnd() < 0.3 ? junk() : base);
+      if (!('errors' in r)) expect(Value.Check(CandidateProfile, r.profile)).toBe(true);
+      else expect(r.errors.length).toBeGreaterThan(0);
+    }
+  });
+});

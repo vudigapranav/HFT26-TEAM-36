@@ -75,3 +75,13 @@ describe('buildReport (P5)', () => {
     expect(Value.Check(Report, r)).toBe(true);
   });
 });
+
+describe('buildReport — hardening (found by fuzzing)', () => {
+  it('caps task rows at the contract limit and survives a task without dsa_topics', () => {
+    const many = Array.from({ length: 25 }, (_, i) => mkTask(`t${i}`, 'novice', ['arrays']));
+    const noTopics = { ...mkTask('nt', 'novice', ['arrays']), dsa_topics: undefined } as unknown as PrivateTask;
+    const r = buildReportValue({ session, tasks: [...many, noTopics], runs, events: [] });
+    expect(r.tasks.length).toBe(20);
+    expect(Value.Check(Report, r)).toBe(true);
+  });
+});
