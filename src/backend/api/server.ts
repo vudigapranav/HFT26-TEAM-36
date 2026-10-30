@@ -5,7 +5,7 @@ import { createDevPorts } from './dev-stubs.js';
 import { readAuthUser } from './auth.js';
 import { AssessmentStore } from './assessment-store.js';
 import { createWiredPorts } from './wiring.js';
-import { loadSeed } from '../runner/local/seed-runner.js';
+import { loadSeedBank } from './seed-bank.js';
 import { createPool } from './db/pool.js';
 
 let pool: ReturnType<typeof createPool> | undefined;
@@ -16,9 +16,10 @@ try {
   const runner = await checkRunner();
   console.log(`Runner: ${runner.runner}${runner.image ? ` image=${runner.image}` : ''}; ${runner.available ? 'available' : 'unavailable'}`);
   const auth = pool && config.mode === 'auth' ? { pool, origin: config.auth_origin, secure: config.secure_cookies } : undefined;
-  const seed = auth ? await loadSeed() : undefined;
+  const seed_bank = auth ? await loadSeedBank() : undefined;
+  const seed = seed_bank?.novice?.[0];
   const app = await buildApp({ runner, ports: seed ? createWiredPorts(seed) : createDevPorts(), ...(auth && seed ? {
-    auth, assessment: { store: new AssessmentStore(), seed, origin: auth.origin, runner_status: runner,
+    auth, assessment: { store: new AssessmentStore(), seed, seed_bank, origin: auth.origin, runner_status: runner,
       authenticate: async request => (await readAuthUser(request, auth))?.user_id },
   } : {}) });
   if (pool) { const appPool = pool; app.addHook('onClose', async () => { await appPool.end(); }); }

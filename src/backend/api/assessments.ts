@@ -2,19 +2,22 @@ import { randomUUID } from 'node:crypto';
 import { TIER_ORDER, allQuestionsSubmitted, nextTier } from './tier-policy.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Type } from 'typebox';
-import { ApiError, AssessmentState, EventsRequest, FocusLaneResponse, HintResponse, PortfolioResponse, QuizAnswers, QuizResponse, Report, RunFilesRequest, RunResult, Task, TaskFilesRequest } from '@torquecode/contracts';
-import type { File } from '@torquecode/contracts';
+import { ApiError, AssessmentState, AssistantResponse, CandidateTask, EventsRequest, FocusLaneResponse, HintResponse, PortfolioResponse, QuizAnswers, QuizResponse, Report, RunFilesRequest, RunResult, TaskFilesRequest } from '@torquecode/contracts';
+import type { File, Tier } from '@torquecode/contracts';
 import type { Event, InternalRunResult, PrivateTask, SeamResult } from '../contracts/internal.js';
 import type { Ports } from '../contracts/seams.js';
 import { parsePortfolioDetailed } from '../intake/portfolio.js';
 import { hashEditableFiles } from '../scoring/aie.js';
-import { AssessmentStore, type AssessmentRecord } from './assessment-store.js';
+import { AssessmentStore, type AssessmentRecord, type TierWork } from './assessment-store.js';
 import type { RunnerStatus } from './runner-status.js';
 import { HttpProblem } from './errors.js';
 import { publicRun, publicTask } from './public-projections.js';
+import { createAssistant } from '../llm/assistant.js';
+import { createHintProvider } from '../llm/hints.js';
 
 export type AssessmentOptions = {
   store: AssessmentStore; seed: PrivateTask; origin: string;
+  seed_bank?: Partial<Record<Tier, PrivateTask[]>>;
   authenticate: (request: FastifyRequest) => Promise<string | undefined>;
   now?: () => number; runner?: 'immutable_seed_only' | 'isolated'; runner_status?: RunnerStatus;
 };
@@ -40,40 +43,84 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     identities.set(request, user);
   });
   const user = (request: FastifyRequest) => identities.get(request)!;
-  const emit = (record: AssessmentRecord, type: Event['type'], payload: Event['payload'], ts = now(), source: Event['source'] = 'server') => {
-    record.events.push({ session_id: record.session.id, task_id: record.task.task_id, ts: new Date(ts).toISOString(), type, source, payload });
+  const emit = (record: AssessmentRecord, type: Event['type'], payload: Event['payload'], ts = now(), source: Event['source'] = 'server', taskId = record.task.task_id) => {
+    record.events.push({ session_id: record.session.id, task_id: taskId, ts: new Date(ts).toISOString(), type, source, payload });
   };
-  function checkedFiles(record: AssessmentRecord, files: File[]): File[] {
-    const editable = record.task.files.filter(file => file.editable);
+  const works = (record: AssessmentRecord, tier: Tier): TierWork[] =>
+    record.question_sets?.[tier] ??
+    (record.tier_work?.[tier] ? [record.tier_work[tier]!] : []);
+
+  const publicId = (record: AssessmentRecord, id: string): string => {
+    const ids = TIER_ORDER.flatMap(tier =>
+      works(record, tier).map(w => w.task.task_id)
+    );
+    const index = ids.indexOf(id);
+    if (index < 0) throw new HttpProblem(404, 'NOT_FOUND');
+    return `question-${index + 1}`;
+  };
+
+  const taskWork = (record: AssessmentRecord, id: string): TierWork => {
+    for (const tier of TIER_ORDER) {
+      const work = works(record, tier).find(w => w.task.task_id === id || publicId(record, w.task.task_id) === id);
+      if (!work) continue;
+      if (TIER_ORDER.indexOf(tier) > TIER_ORDER.indexOf(record.session.current_tier))
+        throw new HttpProblem(403, 'TASK_LOCKED');
+      return work;
+    }
+    throw new HttpProblem(404, 'NOT_FOUND');
+  };
+
+  const syncCurrent = (record: AssessmentRecord, work: TierWork) => {
+    if (record.task.task_id === work.task.task_id) {
+      record.files = structuredClone(work.files);
+      record.hint_level = work.hint_level;
+    }
+  };
+
+  const canUnlock = (record: AssessmentRecord): boolean => {
+    const next = nextTier(record.session.current_tier);
+    return record.session.status === 'active' &&
+      now() < Date.parse(record.session.expires_at) &&
+      next !== null &&
+      works(record, next).length > 0 &&
+      allQuestionsSubmitted(
+        works(record, record.session.current_tier)
+          .map(w => w.task.task_id),
+        record.runs,
+      );
+  };
+
+  function checkedFiles(work: TierWork, files: File[]): File[] {
+    const editable = work.task.files.filter(file => file.editable);
     if (files.length !== editable.length || new Set(files.map(f => f.path)).size !== files.length) throw new HttpProblem(400, 'INVALID_FILES');
     if (files.some(file => !editable.some(expected => expected.path === file.path))) throw new HttpProblem(400, 'INVALID_FILES');
-    return record.task.files.map(expected => {
+    return work.task.files.map(expected => {
       if (!expected.editable) return { ...expected };
       const supplied = files.find(f => f.path === expected.path);
       if (!supplied || supplied.editable !== true) throw new HttpProblem(400, 'INVALID_FILES');
       return { path: expected.path, content: supplied.content, editable: true };
     });
   }
-  async function execute(record: AssessmentRecord, mode: 'run' | 'submit', ts = now()): Promise<InternalRunResult> {
+  async function execute(record: AssessmentRecord, work: TierWork, mode: 'run' | 'submit', ts = now()): Promise<InternalRunResult> {
     if (record.operation) throw new HttpProblem(409, 'EXECUTION_IN_PROGRESS');
     if (executions >= 2) throw new HttpProblem(429, 'RUNNER_BUSY');
     if (record.runs.length >= 100) throw new HttpProblem(429, 'RUN_LIMIT');
-    const files = structuredClone(record.files);
+    const files = structuredClone(work.files);
     const files_hash = hashEditableFiles(files);
     executions++;
     const operation = (async () => {
-      const context = { signal: AbortSignal.any([closing.signal, AbortSignal.timeout(record.task.limits.wall_time_ms + 1000)]) };
-      const outcome = await ports.runTests({ task_id: record.task.task_id, files, tests: structuredClone(record.task.tests), limits: { ...record.task.limits }, mode }, context);
+      const context = { signal: AbortSignal.any([closing.signal, AbortSignal.timeout(work.task.limits.wall_time_ms + 1000)]) };
+      const outcome = await ports.runTests({ task_id: work.task.task_id, files, tests: structuredClone(work.task.tests), limits: { ...work.task.limits }, mode }, context);
       if (outcome.kind === 'unavailable') {
         if (options.runner_status?.runner === 'isolated') options.runner_status.available = false;
         throw new HttpProblem(503, 'SANDBOX_UNAVAILABLE');
       }
       const result = real(outcome);
       // Validate identity/mode before associating a runner result with this user/session.
-      if (result.task_id !== record.task.task_id || result.mode !== mode) throw new Error('Runner result mismatch');
+      if (result.task_id !== work.task.task_id || result.mode !== mode) throw new Error('Runner result mismatch');
       // K10: validate results against the server-owned test manifest.
       // An incomplete or forged result must never count as a grade.
-      const selectedTests = record.task.tests.filter(
+      const selectedTests = work.task.tests.filter(
         test => mode === 'submit' || test.visibility === 'visible',
       );
       const expectedIds = selectedTests.flatMap(test => test.ids);
@@ -103,31 +150,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       publicRun(result); // Reject run-mode hidden results before storing/returning.
       if (options.runner_status?.runner === 'isolated') options.runner_status.available = true;
       record.runs.push(result);
-      emit(record, mode, { run_id: result.run_id, files_hash }, ts);
-
-      // K10: unlocking is earned by a fully passing final submission.
-      // Never invent an unavailable next-tier task.
-      if (
-        mode === 'submit' &&
-        record.session.status === 'active' &&
-        now() < Date.parse(record.session.expires_at) &&
-        allQuestionsSubmitted([record.task.task_id], record.runs)
-      ) {
-        const next = nextTier(record.session.current_tier);
-
-        if (
-          next &&
-          record.tier_work?.[next] &&
-          !record.unlocked_tiers?.includes(next)
-        ) {
-          record.unlocked_tiers ??= ['novice'];
-          record.unlocked_tiers.push(next);
-          emit(record, 'tier_unlocked', {
-            from: record.session.current_tier,
-            to: next,
-          }, ts);
-        }
-      }
+      emit(record, mode, { run_id: result.run_id, files_hash }, ts, 'server', work.task.task_id);
 
       return result;
     })();
@@ -142,7 +165,19 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     const expiry = (async () => {
       try {
         if (record.operation) await record.operation.catch(() => undefined);
-        await execute(record, 'submit', Date.parse(record.session.expires_at));
+        for (const tier of TIER_ORDER) {
+          if (TIER_ORDER.indexOf(tier) >
+              TIER_ORDER.indexOf(record.session.current_tier)) break;
+          for (const work of works(record, tier)) {
+            try {
+              await execute(record, work, 'submit',
+                Date.parse(record.session.expires_at));
+            } catch (error) {
+              record.auto_submit_error ??= error instanceof HttpProblem
+                ? error.code : 'AUTO_SUBMIT_FAILED';
+            }
+          }
+        }
       } catch (error) { record.auto_submit_error = error instanceof HttpProblem ? error.code : 'AUTO_SUBMIT_FAILED'; }
       emit(record, 'session_end', { reason: 'expired', ...(record.auto_submit_error ? { auto_submit_error: record.auto_submit_error } : {}) }, Date.parse(record.session.expires_at));
     })();
@@ -160,7 +195,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   async function owned(request: FastifyRequest, task = false) {
     const params = request.params as { id: string; taskId?: string };
     const record = store.assessments.get(params.id);
-    if (!record || record.session.user_id !== user(request) || (task && params.taskId !== record.task.task_id)) throw new HttpProblem(404, 'NOT_FOUND');
+    if (!record || record.session.user_id !== user(request)) throw new HttpProblem(404, 'NOT_FOUND');
     await expire(record);
     return record;
   }
@@ -169,27 +204,38 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     if (record.operation) throw new HttpProblem(409, 'EXECUTION_IN_PROGRESS');
     if (record.events.length >= 900) throw new HttpProblem(429, 'EVENT_LIMIT');
   };
-  const state = (record: AssessmentRecord) => ({
-    assessment_id: record.session.id, report_id: `report-${record.session.id}`, task_id: record.task.task_id,
-    current_tier: record.session.current_tier, status: record.session.status,
-    unlocked_tiers: record.unlocked_tiers ?? ['novice'],
-    tiers: TIER_ORDER.map(tier => {
-      const work = record.tier_work?.[tier];
-      const unlocked = (record.unlocked_tiers ?? ['novice']).includes(tier);
-      return {
-        tier,
-        availability: work ? 'available' as const : 'unavailable' as const,
-        unlocked,
-        ...(work && unlocked ? { task_id: work.task.task_id } : {}),
-      };
-    }),
-    started_at: record.session.started_at, expires_at: record.session.expires_at,
-    remaining_sec: Math.max(0, Math.min(3600, Math.ceil((Date.parse(record.session.expires_at) - now()) / 1000))),
-    policy_todos: ['OPEN-Q1', 'OPEN-Q4'], runner: options.runner_status?.runner ?? options.runner ?? 'immutable_seed_only',
-    runner_available: options.runner_status?.available ?? true,
-    ...(options.runner_status?.image ? { runner_image: options.runner_status.image } : {}),
-    ...(record.auto_submit_error ? { auto_submit_error: record.auto_submit_error } : {}),
-  });
+  const state = (record: AssessmentRecord) => {
+    const reached = TIER_ORDER.filter(tier =>
+      TIER_ORDER.indexOf(tier) <=
+      TIER_ORDER.indexOf(record.session.current_tier)
+    );
+    const questions = reached.flatMap(tier =>
+      works(record, tier).map(w => ({
+        task_id: publicId(record, w.task.task_id),
+        assistant_enabled: w.task.tier !== 'novice',
+      }))
+    );
+    return {
+      assessment_id: record.session.id,
+      report_id: `report-${record.session.id}`,
+      task_id: publicId(record, record.task.task_id),
+      available_task_ids: questions.map(q => q.task_id),
+      questions,
+      unlock_available: canUnlock(record),
+      unlocks_used: TIER_ORDER.indexOf(record.session.current_tier),
+      status: record.session.status,
+      started_at: record.session.started_at,
+      expires_at: record.session.expires_at,
+      remaining_sec: Math.max(0, Math.min(3600,
+        Math.ceil((Date.parse(record.session.expires_at) - now()) / 1000))),
+      policy_todos: [],
+      runner: options.runner_status?.runner ?? options.runner ?? 'immutable_seed_only',
+      runner_available: options.runner_status?.available ?? true,
+      ...(options.runner_status?.image ? { runner_image: options.runner_status.image } : {}),
+      ...(record.auto_submit_error ? { auto_submit_error: record.auto_submit_error } : {}),
+    };
+  };
+
   app.post('/portfolio', { bodyLimit: 1_048_576, schema: { response: { 200: PortfolioResponse, ...errors } } }, async (request, reply) => {
     const parsed = parsePortfolioDetailed(request.body);
     if ('errors' in parsed) return reply.code(422).send({ error: { code: 'INVALID_PORTFOLIO', message: 'Invalid portfolio', request_id: request.id, fields: parsed.errors } });
@@ -236,7 +282,44 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       },
       unlocked_tiers: ['novice'],
     };
-    // TODO(OPEN-Q1): no guessed unlock/upgrade policy; seed Novice only.
+    const additionalNovice = (options.seed_bank?.novice ?? [])
+      .filter(task =>
+        task.task_id !== seed.task_id &&
+        task.dsa_topics.every(topic =>
+          stored.profile.claimed_topics.includes(topic)
+        )
+      );
+
+    record.question_sets = {
+      novice: [
+        record.tier_work!.novice!,
+        ...additionalNovice.map(task => ({
+          task: structuredClone(task),
+          files: structuredClone(task.files),
+          hint_level: 0,
+        })),
+      ],
+    };
+
+    for (const tier of TIER_ORDER) {
+      if (tier === 'novice') continue;
+
+      const selected = (options.seed_bank?.[tier] ?? []).filter(candidate =>
+        candidate.dsa_topics.every(topic =>
+          stored.profile.claimed_topics.includes(topic)
+        )
+      );
+
+      if (!selected.length) continue;
+
+      record.question_sets[tier] = selected.map(task => ({
+        task: structuredClone(task),
+        files: structuredClone(task.files),
+        hint_level: 0,
+      }));
+      record.tier_work![tier] = record.question_sets[tier]![0]!;
+    }
+
     store.assessments.set(record.session.id, record);
     return reply.code(201).send(state(record));
   });
@@ -250,64 +333,191 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     const from = record.session.current_tier;
     const to = nextTier(from);
 
-    if (!to) throw new HttpProblem(409, 'NO_HIGHER_TIER');
-    if (!record.unlocked_tiers?.includes(to))
-      throw new HttpProblem(409, 'TIER_LOCKED');
+    if (!to || !canUnlock(record))
+      throw new HttpProblem(409, 'UNLOCK_NOT_AVAILABLE');
 
-    const nextWork = record.tier_work?.[to];
-    if (!nextWork) throw new HttpProblem(409, 'TIER_UNAVAILABLE');
+    const nextWork = works(record, to)[0]!;
 
     record.tier_work ??= {};
-    record.tier_work[from] = {
-      task: record.task,
-      files: structuredClone(record.files),
-      hint_level: record.hint_level,
-    };
+    const previous = works(record, from)[0];
+    if (previous) record.tier_work[from] = previous;
 
     record.task = structuredClone(nextWork.task);
     record.files = structuredClone(nextWork.files);
     record.hint_level = nextWork.hint_level;
     record.session.current_tier = to;
 
+    record.unlocked_tiers ??= ['novice'];
+    record.unlocked_tiers.push(to);
+    const unlocks_used = TIER_ORDER.indexOf(to);
 
-    emit(record, 'tier_upgraded', { from, to });
+    emit(record, 'tier_unlocked', { unlocks_used });
+    emit(record, 'tier_upgraded', { unlocks_used });
     return state(record);
   });
 
-  app.get('/assessments/:id/tasks/:taskId', { schema: { response: { 200: Task, ...errors } } }, async request => {
+  app.get('/assessments/:id/tasks/:taskId', { schema: { response: { 200: CandidateTask, ...errors } } }, async request => {
     const record = await owned(request, true);
-    return publicTask({ ...record.task, files: record.files });
+    const work = taskWork(record, (request.params as { taskId: string }).taskId);
+    const { tier: _tier, ...candidate } =
+      publicTask({ ...work.task, files: work.files });
+    return {
+      ...candidate,
+      task_id: publicId(record, work.task.task_id),
+      assistant_enabled: work.task.tier !== 'novice',
+    };
   });
   app.put<{ Body: { files: File[] } }>('/assessments/:id/tasks/:taskId/files', { schema: { body: TaskFilesRequest, response: { 200: ok, ...errors } } }, async request => {
     const record = await owned(request, true); active(record);
-    record.files = checkedFiles(record, request.body.files);
-    emit(record, 'file_edit_snapshot', { files_hash: hashEditableFiles(record.files) });
+    const work = taskWork(record, (request.params as { taskId: string }).taskId);
+    work.files = checkedFiles(work, request.body.files);
+    syncCurrent(record, work);
+    emit(record, 'file_edit_snapshot',
+      { files_hash: hashEditableFiles(work.files) },
+      now(), 'server', work.task.task_id);
     return { ok: true };
   });
   for (const mode of ['run', 'submit'] as const) app.post<{ Body: { files?: File[] } }>(`/assessments/:id/tasks/:taskId/${mode}`, { schema: { body: RunFilesRequest, response: { 200: RunResult, ...errors } } }, async request => {
     const record = await owned(request, true); active(record);
-    if (request.body.files) record.files = checkedFiles(record, request.body.files);
-    return publicRun(await execute(record, mode));
+    const work = taskWork(record, (request.params as { taskId: string }).taskId);
+    if (request.body.files) {
+      work.files = checkedFiles(work, request.body.files);
+      syncCurrent(record, work);
+    }
+    const result = publicRun(await execute(record, work, mode));
+    return { ...result, task_id: publicId(record, work.task.task_id) };
   });
-  app.post('/assessments/:id/hint', { schema: { body: empty, response: { 200: HintResponse, ...errors } } }, async request => {
-    const record = await owned(request); active(record);
-    if (record.hint_pending) throw new HttpProblem(409, 'HINT_IN_PROGRESS');
-    if (record.hint_level >= 3) throw new HttpProblem(409, 'HINTS_EXHAUSTED');
-    const level = (record.hint_level + 1) as 1 | 2 | 3;
-    record.hint_pending = true;
+  const taskSelector = Type.Object({
+    task_id: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+  }, { additionalProperties: false });
+
+  app.post<{ Body: { task_id?: string } }>(
+    '/assessments/:id/hint',
+    { schema: { body: taskSelector, response: { 200: HintResponse, ...errors } } },
+    async request => {
+      const record = await owned(request);
+      active(record);
+      const work = taskWork(record, request.body.task_id ?? record.task.task_id);
+
+      if (work.task.tier === 'novice')
+        throw new HttpProblem(403, 'ASSISTANCE_DISABLED');
+      if (record.hint_pending) throw new HttpProblem(409, 'HINT_IN_PROGRESS');
+      if (work.hint_level >= 3) throw new HttpProblem(409, 'HINTS_EXHAUSTED');
+
+      const level = (work.hint_level + 1) as 1 | 2 | 3;
+      record.hint_pending = true;
+      try {
+        const provider = createHintProvider(async taskId =>
+          taskId === work.task.task_id ? work.task.hint_ladder : null
+        );
+        const hint = real(await provider(
+          { task_id: work.task.task_id, level },
+          { signal: AbortSignal.any([closing.signal, AbortSignal.timeout(5000)]) }
+        ));
+        work.hint_level = level;
+        syncCurrent(record, work);
+        emit(record, 'hint_request', { level }, now(), 'server', work.task.task_id);
+        emit(record, 'hint_served', { level }, now(), 'server', work.task.task_id);
+        return hint;
+      } finally {
+        delete record.hint_pending;
+      }
+    }
+  );
+
+  const assistantBody = Type.Object({
+    task_id: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+    message: Type.String({ minLength: 1, maxLength: 2000 }),
+    history: Type.Optional(Type.Array(Type.Object({
+      role: Type.Union([Type.Literal('user'), Type.Literal('assistant')]),
+      content: Type.String({ maxLength: 2000 }),
+    }, { additionalProperties: false }), { maxItems: 12 })),
+  }, { additionalProperties: false });
+
+  app.post<{
+    Body: {
+      task_id?: string;
+      message: string;
+      history?: { role: 'user' | 'assistant'; content: string }[];
+    };
+  }>('/assessments/:id/assistant', {
+    schema: { body: assistantBody, response: { 200: AssistantResponse, ...errors } },
+  }, async request => {
+    const record = await owned(request);
+    active(record);
+    const work = taskWork(record, request.body.task_id ?? record.task.task_id);
+
+    if (work.task.tier === 'novice')
+      throw new HttpProblem(403, 'ASSISTANCE_DISABLED');
+
+    const used = record.events.filter(event =>
+      event.task_id === work.task.task_id &&
+      (event.type === 'assistant_message' || event.type === 'assistant_blocked')
+    ).length;
+    if (used >= 10) throw new HttpProblem(429, 'ASSISTANT_LIMIT');
+
+    if (record.assistant_pending)
+      throw new HttpProblem(409, 'ASSISTANT_IN_PROGRESS');
+    record.assistant_pending = true;
+
     try {
-    emit(record, 'hint_request', { level });
-    const hint = real(await ports.nextHint({ task_id: record.task.task_id, level }, { signal: AbortSignal.any([closing.signal, AbortSignal.timeout(5000)]) }));
-    if (hint.level !== level) throw new Error('Hint result mismatch');
-    record.hint_level = level; emit(record, 'hint_served', { level });
-    return hint;
-    } finally { delete record.hint_pending; }
+      const latest = record.runs.filter(r =>
+        r.task_id === work.task.task_id
+      ).at(-1);
+      const failures = (latest?.tests ?? [])
+        .filter(t => t.visibility === 'visible' && t.status !== 'pass')
+        .map(t => ({
+          id: t.id,
+          status: t.status,
+          duration_ms: t.duration_ms,
+        }));
+
+      const guarded = createAssistant({
+        chat: ports.chat,
+        referenceFiles: async id =>
+          id === work.task.task_id
+            ? structuredClone(work.task.reference_files) : null,
+        onEvent: event => emit(
+          record, event.type, event.payload,
+          now(), 'server', event.task_id
+        ),
+      });
+
+      const answer = await guarded({
+        task: publicTask({ ...work.task, files: work.files }),
+        files: structuredClone(work.files),
+        visible_failures: failures,
+        message: request.body.message,
+        history: request.body.history ?? [],
+      }, {
+        signal: AbortSignal.any([closing.signal, AbortSignal.timeout(8500)]),
+      });
+
+      if (answer.kind !== 'ok')
+        throw new HttpProblem(503, 'LLM_UNAVAILABLE');
+
+      if (answer.value.blocked) return answer.value;
+      return {
+        ...answer.value,
+        reply: answer.value.reply.replace(
+          /\b(?:novice|adept|master)\b/gi, 'current'
+        ),
+      };
+    } finally {
+      record.assistant_pending = false;
+    }
   });
+
   app.post<{ Body: { events: { task_id: string; client_ts: string; type: 'tab_hidden' | 'tab_visible' | 'copy' | 'paste'; payload: { size?: number } }[] } }>('/assessments/:id/events', { schema: { body: EventsRequest, response: { 200: ok, ...errors } } }, async request => {
     const record = await owned(request); active(record);
-    if (request.body.events.some(e => e.task_id !== record.task.task_id)) throw new HttpProblem(400, 'INVALID_TASK');
+    for (const event of request.body.events) {
+      try { taskWork(record, event.task_id); }
+      catch { throw new HttpProblem(400, 'INVALID_TASK'); }
+    }
     if (record.events.length + request.body.events.length > 900) throw new HttpProblem(429, 'EVENT_LIMIT');
-    for (const event of request.body.events) emit(record, event.type, { ...event.payload, client_ts: event.client_ts }, now(), 'client');
+    for (const event of request.body.events)
+      emit(record, event.type, { ...event.payload, client_ts: event.client_ts },
+        now(), 'client', event.task_id);
     return { ok: true };
   });
   app.get('/reports/:id', { schema: { response: { 200: Report, ...errors } } }, async request => {
@@ -316,7 +526,10 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     if (!record || record.session.user_id !== user(request)) throw new HttpProblem(404, 'NOT_FOUND');
     await expire(record);
     // calculateAie is wired independently for later tiers; Novice remains the report owner's TODO(OPEN-Q4).
-    const tasks = [record.task];
+    const tasks = TIER_ORDER
+      .filter(tier => TIER_ORDER.indexOf(tier) <=
+        TIER_ORDER.indexOf(record.session.current_tier))
+      .flatMap(tier => works(record, tier).map(w => w.task));
     for (const task of tasks) if (task.tier !== 'novice') real(ports.calculateAie({ events: record.events, runs: record.runs, task }));
     return real(ports.buildReport({ session: record.session, tasks, runs: record.runs, events: record.events }));
   });

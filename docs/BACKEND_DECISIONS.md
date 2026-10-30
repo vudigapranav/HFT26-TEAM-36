@@ -95,9 +95,9 @@ pnpm dev
 
 ## Open product and infrastructure decisions
 
-- `TODO(OPEN-Q1)`: exact unlock policy and tier time allocation.
+- Q1 LOCKED (Pranav, 2026-10-31): one server-authoritative 60-minute session; no per-tier budgets. Submit every question in the current set, regardless of correctness, to make the next set eligible for voluntary unlock.
 - `TODO(OPEN-Q2)`: quiz purpose, scoring and timing relative to the 60-minute timer.
-- `TODO(OPEN-Q3)`: failed-tier and declined-upgrade behavior.
+- Q3 LOCKED (Pranav, 2026-10-31): at most two voluntary unlocks; declining keeps the current set accessible, and previously unlocked questions remain accessible until expiry. No candidate-facing tier names.
 - `TODO(OPEN-Q4)`: Novice AIE treatment and score aggregation/outcomes remain open. Pranav has locked H_max=6, hint/assistant weights, the first-of-three-runs-or-ten-minutes window, final-submit gate, and starter hash as the first-run baseline in context §12. Pranav owns their scorer implementation; K1 computes no grade.
 - `TODO(OPEN-ASSISTANT-LIMITS)`: Adept/Master hint and assistant limits.
 - Empty topics: Karthik confirmed arrays/strings fallback WITH a visible warning on 2026-10-31. Use parsePortfolioDetailed; never discard the warning.
@@ -163,3 +163,15 @@ After reading `docs/prompts/KARTHIK_Codex_Prompts.md`, Karthik explicitly chose:
 - Recorded Rithvik model choices from his R0 measurements: generation `Qwen/Qwen3-Coder-30B-A3B-Instruct`; assistant `Qwen/Qwen3-30B-A3B-Instruct-2507`. Set FEATHERLESS_MODEL_GENERATION/ASSISTANT explicitly when R4 is wired. These are measured tiny-prompt proposals recorded at Karthik's request; long generation, concurrency/429 behavior and live API integration remain unverified. No provider calls or key values are added here.
 - R2 is container isolation for the demo, not production grading integrity: Rithvik documents that candidate code shares the pytest interpreter and can forge a consistent report by forcing exit 0, and /out lacks a size cap. R3 remains his hardening task; K9 does not alter or certify those properties.
 - Verification commands: `pnpm typecheck && pnpm test`; additionally `RUNNER=docker pnpm test` on a Docker/image-equipped machine. Real Docker suites use describe.skipIf when missing. Skipped Docker checks are reported explicitly, never as verified container execution.
+
+## K10 question-set implementation
+
+- One 60-minute timer; attempt-based voluntary unlocks, maximum two.
+- Every question in the current set requires a validated Submit before unlocking.
+- Question sets support multiple tasks and retain independent files.
+- Previously unlocked questions remain editable and runnable.
+- Candidate assessment JSON uses neutral question IDs and assistance flags.
+- Hints and guarded assistant are restricted to higher-level questions.
+- LLM availability is separate from deterministic grading.
+- Review status: full backend Vitest run reported 255 passed and 9 auth integration tests skipped. The skipped tests require isolated PostgreSQL verification.
+- Follow-up integration: reconcile report task filtering and scoring with Pranav's P11 changes before merging.

@@ -1,6 +1,6 @@
 import { expect } from 'vitest';
 import Value from 'typebox/value';
-import { ApiError, AssessmentState, AuthUserResponse, FocusLaneResponse, Health, HintResponse, PortfolioResponse, QuizResponse, Report, RunResult, Task } from '@torquecode/contracts';
+import { ApiError, AssessmentState, AssistantResponse, CandidateTask, AuthUserResponse, FocusLaneResponse, Health, HintResponse, PortfolioResponse, QuizResponse, Report, RunResult } from '@torquecode/contracts';
 import { Type } from 'typebox';
 
 const acknowledgement = Type.Object({ ok: Type.Literal(true) }, { additionalProperties: false });
@@ -15,9 +15,10 @@ export function checkResponseContract(method: string, url: string, response: Res
     : path === '/onboarding-quiz' ? method === 'GET' ? QuizResponse : FocusLaneResponse
     : path === '/assessments' || /^\/assessments\/[^/]+\/status$/.test(path) ? AssessmentState
     : /^\/assessments\/[^/]+\/tier\/upgrade$/.test(path) ? AssessmentState
-    : /^\/assessments\/[^/]+\/tasks\/[^/]+$/.test(path) ? Task
+    : /^\/assessments\/[^/]+\/tasks\/[^/]+$/.test(path) ? CandidateTask
     : /\/(run|submit)$/.test(path) ? RunResult
     : /\/hint$/.test(path) ? HintResponse
+    : /\/assistant$/.test(path) ? AssistantResponse
     : /\/(files|events)$/.test(path) ? acknowledgement
     : /^\/reports\/[^/]+$/.test(path) ? Report : undefined;
   expect(schema, `No response contract for ${method} ${url}`).toBeDefined();

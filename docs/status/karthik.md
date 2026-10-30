@@ -178,3 +178,9 @@ Finalize integrated tests, documentation audit, pre-push hook and PR to vudigapr
 - Actual checks: pnpm typecheck, pnpm test, pnpm build, ownership and diff checks passed. Full Vitest: 87 passed, 23 skipped (9 PostgreSQL + 14 Docker). Python reporter: 4 passed. PostgreSQL harness explicitly skips again in this sandbox; Docker CLI/image are unavailable. No live K9 Docker or new PostgreSQL integration verification is claimed. Use RUNNER=docker pnpm test on a Docker/image-equipped machine.
 - Reviews: fresh coverage/plan audits completed; all 23 static K9 plan items addressed. Security specialist found no new defects. API-contract review caught a test-probe empty-image mismatch; aligned it with the API default. Native adversarial reviewer reported no findings, with fixtures reviewed in summary mode. No external Claude review is claimed.
 - Shipping: current branch karthik/k9-docker-wiring; fetched/integrated latest origin/main through 997815c (teammate frontend docs only). No team modules changed. Tier/generation work remains outside K9. Publication and final docs audit pending at this entry; no merge authorized.
+
+## 2026-10-31 03:57 IST — K10 — Question sets and guarded assistant
+- Changed: multi-question assessment flow, 60-minute timer, attempt-based voluntary unlocking, neutral public question IDs, assistant and hints restricted by task.
+- Verification: 256 backend tests and 9 isolated PostgreSQL auth tests passed before final AI-response hardening; final focused tests and build checked separately.
+- Integration: review against latest main and coordinate report compatibility with Pranav. No rebase or merge performed.
+- Next: PR review, then K5 validation engine.
