@@ -336,3 +336,40 @@ Base: origin/main `462c530`. Branch `rithvik/k7-docker-check`; tests and status 
 - Single-run timings (earlier run, same machine): novice reference ~1.75 s, adept ~2.0–2.3 s, master ~2.5 s. **Master starter 5.1 s**, slower than Pranav's ~2 s estimate: its starter is deliberately slow on the 30,000-record performance test. That's still well under its 10 s `wall_time_ms`, which counts candidate time only.
 - The Master performance test (30,000 codes, 0.3 s limit) passes through the R3 relay with the reference. Its timing is measured inside the trusted grader, so it includes relay overhead; the margin was enough here.
 - K5/K6 note: run this test on any new or generated seed. A task that breaks the plain-data format shows up as `unavailable: Task not supported`, not as a grade.
+
+## 2026-10-31 03:32 — R6 — reproducible local deployment (`deploy/`)
+Base: `rithvik/k7-docker-check` (PR 39) on origin/main `462c530`. Branch `rithvik/r6-deploy`.
+- **Architecture** (Rithvik's defaults; no other answer was given):
+  - Local only, everything on `127.0.0.1`.
+  - **Compose runs only PostgreSQL 16** (`postgres:16-alpine`, multi-arch, named volume `torquecode-pgdata`, health check, port 54329).
+  - **The backend runs on the host** from `src/backend` (`APP_MODE=auth RUNNER=docker`, compiled `dist/`) and starts the runner containers with the host Docker CLI. **No container gets the Docker socket.**
+  - Pranav's 03:20 prompt asks for the backend *in* Compose with the socket mounted. I didn't do that: it hands host-level Docker control to a web-facing container. It's flagged as a team decision for Rithvik.
+- **Files:**
+  - `deploy/start.sh`: idempotent. It checks Docker, Compose, Node and curl; creates `deploy/.env` with a generated DB password (chmod 600, git-ignored); starts Postgres and waits for health; builds or checks the runner image; runs the frozen-lockfile pnpm install and the build; migrates; starts the backend; waits for `/health`.
+    - A healthy backend is **left running** (assessments live in memory); `--restart` is needed to restart it.
+    - `--rebuild` rebuilds the image.
+  - `deploy/stop.sh`: verifies the backend is down by port, removes leftover runner containers, stops Postgres and keeps its data. `--purge --yes` deletes the data.
+  - `deploy/reset-db.sh --yes`: a clean slate.
+  - `deploy/verify.sh [--outage]` with `verify.mjs`: the HTTP journey.
+  - `deploy/.env.example` has blank secrets. `deploy/README.md` covers setup, teardown, migrations, backup and restore, resources, troubleshooting and the demo fallback.
+  - `deploy/lib.sh` holds the shared helpers.
+- **Verified here: Windows 11 x86-64, Docker Desktop 29.8.0, Node 24.19.0, Git Bash.** NOT verified on the demo Mac.
+  1. Fresh start: Postgres pulled, healthy; image present; install and build OK; migrations applied; backend `{"status":"ok","mode":"auth","runner":"isolated","runner_available":true}`.
+  2. `deploy/verify.sh --outage`: **31/31 checks**, run 3 times, the last one with `docs/demo/demo-portfolio.json`.
+     - Journey: register → login (cookie session) → `/auth/me` → portfolio → quiz → assessment → task (no reference, hint ladder, hidden-test or F2P/P2P data) → Run of the starter in Docker (fails) → Submit of the fixed code **5/5**, with hidden tests counted and stdout/stderr empty → hint (200) → report.
+     - A second account gets 404 for the first account's report and assessment.
+     - Outage: a second backend with an unreachable Docker daemon (`DOCKER_HOST=tcp://127.0.0.1:9`) reports `runner_available:false`, Run gives **503**, no host or socket text leaks, and the report has no graded run.
+  3. Stop and start: 3 accounts before `stop.sh`, the same 3 after `start.sh`, and the journey passes again. After `stop.sh`, nothing is listening on 3001 and no runner containers are left.
+  4. `start.sh` with the backend up leaves it running (checked).
+- **Problems found while verifying, and fixed:**
+  - Port 55432 is inside a Windows Hyper-V reserved range, so the default moved to 54329, which is also clear of a local 5432 Postgres.
+  - pnpm 11 runs package scripts with cmd.exe on Windows, so `pnpm build` failed at `mkdir -p`. `lib.sh` sets `pnpm_config_script_shell` to Git Bash (`npm_config_*` is ignored by pnpm 11).
+  - On Git Bash, `$!` doesn't control the native `node.exe`, so stop now goes by the listening port (`taskkill` / `lsof`) and verifies.
+  - The backgrounded backend kept a caller's pipe open; `</dev/null` fixes it.
+  - `start.sh` used to restart a healthy backend, which drops in-memory assessments; it doesn't any more.
+- **Not done or blocked (exact dependency):**
+  - **Demo Mac:** not accessible to me. Rithvik should run on it: `git clone … && cd HFT26-TEAM-36 && deploy/start.sh && deploy/verify.sh --outage`, and record the output here. The arm64 image builds natively from the multi-arch base, but that is **unverified** on Apple Silicon.
+  - **Frontend:** `src/frontend` is empty on main (Akshit). `AUTH_ORIGIN` defaults to `http://localhost:5173`; its dev server must proxy `/api` to `127.0.0.1:3001`, stripping `/api` and keeping `Origin`. No browser journey has been run.
+  - **K10 (Karthik): not started.** No `karthik/k10` branch exists, and `api/wiring.ts` still lacks `chat`, `assistantReply` and the generic `nextHint`. The unlock and assistant steps of the journey can't run. A missing `FEATHERLESS_API_KEY` can't break anything yet, because nothing in the running API reads it.
+  - **Backup screen recording:** I can't record the screen. Rithvik records it on the demo machine.
+  - The journey hits the per-IP auth rate limiter after several runs in a few minutes (`register` fails, now reported with its HTTP status). That's expected behaviour.

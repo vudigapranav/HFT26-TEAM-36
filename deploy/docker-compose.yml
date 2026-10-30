@@ -1,0 +1,26 @@
+# TorqueCode demo services. Only PostgreSQL runs here.
+# The backend runs on the host (deploy/start.sh) and starts the runner containers with the
+# host's Docker CLI. No container is ever given the Docker socket.
+name: torquecode
+
+services:
+  postgres:
+    image: postgres:16-alpine  # multi-arch: amd64 and arm64 (Apple Silicon)
+    environment:
+      POSTGRES_USER: torquecode
+      POSTGRES_DB: torquecode
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env (start.sh generates one)}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-54329}:5432"  # loopback only
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U torquecode -d torquecode"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    name: torquecode-pgdata
