@@ -8,9 +8,9 @@ This file distinguishes implementation, executed verification, integration readi
 |---|---|---|
 | K0 decisions | Stack approved; Karthik confirmed team agreement. Decisions documented. | Approved contracts preserved; K1 merged in PR #6. Same stack explicitly retained for K2. |
 | K1 skeleton/contracts/seed | Implemented and merged in PR #6; local documentation correction retained. | Initial verification was 14 tests. Skill-assisted review now adds five TS cases and four real Python cases; final integrated verification below. |
-| K2 database/login | Implemented in working tree on karthik/k2-auth-db; not committed/pushed/merged | Local typecheck/build and 49 TS tests passed; Karthik reports 9/9 real PostgreSQL auth tests passed in host terminal. See K2 entry below. |
-| K3 sessions/timer/tiers | Not started | Blocked on product policies and real runner for candidate flow |
-| K4 complete API/background jobs | Not started | Not tested |
+| K2 database/login | Published as 1a8d9c1, merged by the team in PR #9 (edeb1fb) | K2 checks passed; Karthik reports 9/9 real PostgreSQL auth tests passed in host terminal. Current follow-up checks are in the latest entry below. |
+| K3 sessions/timer/tiers | Seed checkpoint routes, in-memory store, autosave and server deadline implemented in follow-up branch | Tier policy stays OPEN-Q1; general candidate execution requires Rithvik’s runner |
+| K4 complete API/background jobs | K4-lite intake/quiz/run/submit/hint/report wiring implemented in follow-up branch | Full K4, generation jobs and assistant remain unimplemented |
 | K5 validation engine | Not started | Seed checks are not the complete validation engine |
 | K6 generation pipeline | Not started | No live Featherless call or generated task tested |
 | K7 Adept/Master seeds | Not started | Novice seed only in K1 |
@@ -42,14 +42,14 @@ No test results are simulated. Development fixtures are labelled. No coverage pe
 
 ## Integration notes
 
-- Current task branch: `karthik/k2-auth-db`. It contains the K1 documentation correction and is based on main through Pranav's merged report builder (PR #8). K1 PR #6 and intake/quiz/AIE PR #7 are in local history. Existing changes are preserved.
+- Current task branch: `karthik/k3-k4-lite`, based on the published `karthik/k2-auth-db` changes. It contains the K1 documentation correction and is based on main through Pranav's merged report builder (PR #8). K1 PR #6 and intake/quiz/AIE PR #7 are in local history. Existing changes are preserved.
 - K2 adds database-backed registration/login/logout and protected current-user lookup. The ten seam signatures remain unchanged; teammate implementation folders remain untouched.
 - Auth is enabled only by explicit APP_MODE=auth and validated configuration. Candidate execution, generation, assessment routes and frontend end-to-end integration remain unavailable.
-- Pending integration conflicts: empty-topic fallback differs from the decisions file; Pranav's Novice-only report scoring policy remains TODO(OPEN-Q4). Neither is silently decided by K2.
+- Empty-topic fallback is explicitly approved with a visible warning. Tier policy and Novice-only report scoring remain TODO(OPEN-Q1/Q4); checkpoint routes do not block on them.
 
 ## Next
 
-Review and obtain approval to publish K2. Do not push or merge without Karthik's approval. K2 is not shipped; Pranav retains final merge ownership. Do not start K3–K8 as part of this task.
+Karthik has authorized and K2 has been pushed (PR #9). Publish the requested K3/K4-lite follow-up for Pranav’s review; do not merge. K5–K8 remain outside this scope.
 
 ## 2026-10-30 23:23 IST — K1 — verified skeleton ready for review
 
@@ -141,3 +141,24 @@ Finalize integrated tests, documentation audit, pre-push hook and PR to vudigapr
 - Updated scripts/test-auth.mjs: unavailable PostgreSQL startup runs Vitest with the database suite explicitly skipped; inherited database/test-enable variables are cleared. Once started, migration/assertion failures still fail. TORQUECODE_REQUIRE_DB=1 enforces mandatory database availability. Prior host verification remains 9/9 passing; skipped tests are never counted as passed.
 - Next approved scope: K3 + K4-lite seed assessment API before further auth polish, same-origin /api dev proxy, SameSite=Lax cookies, visible empty-topic fallback warning. Tier/Novice-only scoring stay TODO(OPEN-Q1/Q4). Local seed runner still rejects edited candidate code until isolated Docker runner is available.
 - Publication target: karthik/k2-auth-db in vudigapranav/HFT26-TEAM-36, base main; Pranav's assistant reviews/merges. No merge by this agent.
+
+
+## 2026-10-31 — K3/K4-lite — public contracts and shared auth reader
+
+- K2 commit 1a8d9c1 pushed to karthik/k2-auth-db with original pre-push hook passing. PR: https://github.com/vudigapranav/HFT26-TEAM-36/pull/9 . GitHub connector PR creation returned 403; authenticated gh CLI created it successfully. No merge performed.
+- Current follow-up branch: karthik/k3-k4-lite, based on K2 so the published auth PR stays unchanged. Additive TypeBox schemas cover detailed portfolio warnings/flags, quiz, focus lane, assessment state, saved/run files and hints. Ten seams unchanged.
+- Added shared readAuthUser for protected assessment routes; Karthik explicitly changed cookies to SameSite=Lax for same-origin frontend proxy integration. Existing host 9/9 PostgreSQL evidence predates this follow-up; current database tests skip in the sandbox.
+- Exact proxy handoff and Homebrew PostgreSQL 16 preparation are documented in the backend README/decisions. No direct Akshit/Rithvik message sent: Karthik clarified teammates have not begun integrating and this is preparation. Their frontend/deployment folders remain untouched.
+
+
+## 2026-10-31 — K3/K4-lite — verified checkpoint API ready for publication
+
+- Implemented: real detailed portfolio intake (warnings/injection_flags preserved), quiz, protected per-user seed assessment creation/status/task retrieval, autosave, Run/Submit through Ports.runTests, server-owned 60-minute deadline with automatic submission attempt, bounded integrity-event ingestion, hint ladder through Ports.nextHint and report through real buildReport. calculateAie is wired for subsequent AI tiers. Store is deliberately in memory.
+- Scoring events: run/submit payloads are exactly {run_id,files_hash}, with hashEditableFiles from scoring/aie.ts. hint_served payload is {level}. User-provided integrity events cannot forge these server events. Public projections and response schemas omit references, hidden test contents/IDs and submit stdout/stderr.
+- Verification (current checkout, Node 26.7.0): full pnpm test exited 0 with 56 TS tests passing (10 files), 4 real Python reporter tests passing, and 9 PostgreSQL tests explicitly skipped because initdb is unavailable in the sandbox. Typecheck/build/ownership/diff checks passed. Compiled auth-mode OpenAPI generated 16 implemented paths without contacting a database; build copies intake JSON and migration SQL.
+- Six assessment tests use real Pranav modules, real immutable seed pytest execution, projections/scoring/report and an explicitly injected identity fixture (not a live PostgreSQL login/browser). They cover the entire upload→quiz→run→hint→autosave→submit→report flow, required event hashes, owner isolation, input/path tampering, runner rejection of arbitrary edits, deadline auto-submit, unavailable auto-submit, exhausted hints, visible empty-topic fallback and injection flags. An additional auth boundary test composes actual cookie-session lookup with assessment wiring and rejects absent/malformed cookies without a database query.
+- Repair during verification: the pre-existing generic error handler collapsed an intentional SANDBOX_UNAVAILABLE 503 into 500. The new HTTP flow test failed 500-vs-503 before preserving only trusted HttpProblem status/codes; it passes afterward. Other exception details remain sanitized.
+- Limits/unverified: arbitrary candidate edits still require Rithvik’s isolated runner; no runner, LLM or deployment module was edited. Active reports are snapshots, not final completion signals; check /status. A process restart loses checkpoint assessments/reports. General tier upgrade policy, generated tasks, background jobs, Adept/Master tasks and live assistant remain outside this lite change. No live browser/proxy/TLS or post-follow-up real PostgreSQL run is claimed; earlier host 9/9 evidence belongs to K2 before the Lax/shared-reader follow-up.
+- Handoff: frontend /api proxy must strip /api and preserve Origin; AUTH_ORIGIN is the frontend dev origin. Cookies HttpOnly + SameSite=Lax. Empty topics fallback arrays/strings WITH displayed warning is explicitly approved. TODO(OPEN-Q1/Q4) remains visible and does not block this checkpoint. Homebrew PostgreSQL 16 is the prepared option on the host-tested Mac; actual demo-machine choice/teammate confirmation is not fabricated.
+- Git: K2 merge edeb1fb is now visible in fetched origin/main, performed by the team, not this agent. Follow-up uses small commits on karthik/k3-k4-lite and will be pushed for Pranav’s assistant to review/merge. No automatic merge. Teammate implementation paths are unchanged.
+- Next: team review/pull, configure frontend proxy and swap api/wiring.ts runTests to Rithvik’s isolated implementation once merged. Do not claim full K3/K4 or an end-to-end candidate sandbox until those dependencies/policies are verified.

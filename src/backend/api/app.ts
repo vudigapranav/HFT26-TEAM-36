@@ -16,7 +16,7 @@ export async function buildApp(dependencies: { ports: Ports; auth?: AuthOptions;
   app.decorate('ports', dependencies.ports);
   registerErrors(app);
   await app.register(swagger, { openapi: {
-    info: { title: 'TorqueCode backend', version: '0.1.0', description: 'Health and optional cookie authentication. Candidate execution remains disabled.' },
+    info: { title: 'TorqueCode backend', version: '0.1.0', description: 'Health, optional cookie authentication and seed checkpoint routes. Arbitrary candidate execution remains disabled.' },
   } });
   if (dependencies.auth) await registerAuth(app, dependencies.auth);
   if (dependencies.assessment) await app.register(async scoped => {
