@@ -46,3 +46,9 @@ Newest entries at the bottom. Written by `/ship`.
 - Seams/contracts affected: none (behavior now always contract-valid)
 - Teammates should know: Karthik — please read docs/reviews/2026-10-31-integration-attack.md findings 2 and 3 (response schemas not enforced; /portfolio body limit). Everyone: `python3 scripts/attack-api.py` re-runs 39 API attacks against a live auth-mode backend.
 - Next: frontend with Akshit.
+
+## 2026-10-31 00:50 — frontend plan for Akshit (+ Pranav)
+- Changed: docs/prompts/AKSHIT_Frontend_Plan.md (stack, proxy, full API map, screens F0–F8 with owners, prompts)
+- Seams/contracts affected: none
+- Teammates should know: Karthik — please add "- src/frontend" to pnpm-workspace.yaml so the frontend can import @torquecode/contracts types. Frontend dev runs on http://localhost:5173 → backend AUTH_ORIGIN must be exactly that.
+- Next: F2/F3/F6 after Akshit's F0.
