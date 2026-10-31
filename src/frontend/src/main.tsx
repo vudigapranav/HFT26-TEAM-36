@@ -2,7 +2,7 @@ import React,{Suspense,lazy,useEffect,useRef,useState,type ReactNode} from 'reac
 import {createRoot} from 'react-dom/client';
 import {HashRouter,Link,Navigate,Outlet,Route,Routes,useLocation,useNavigate} from 'react-router-dom';
 import {api,AppProvider,Brand,Button,ErrorNotice,flushPending,Icon,resetDemo,Skeleton,useApp} from './lib';
-import type {AuthUser} from '@torquecode/contracts';
+import type {AuthUser} from './types';
 import './styles.css';import './onboarding.css';import './onboarding-react.css';import './polish.css';
 const FinishPreview=lazy(()=>import('./pages/FinishPreview'));
 const Auth=lazy(()=>import('./pages/Auth')),Portfolio=lazy(()=>import('./pages/Portfolio')),Quiz=lazy(()=>import('./pages/Quiz')),Ready=lazy(()=>import('./pages/Ready')),Workspace=lazy(()=>import('./pages/Workspace')),Report=lazy(()=>import('./pages/Report'));

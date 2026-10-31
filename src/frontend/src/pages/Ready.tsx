@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {Navigate,useNavigate} from 'react-router-dom';
-import type {AssessmentState} from '@torquecode/contracts';
+import type {AssessmentState} from '../types';
 import {api,Button,Chips,ErrorNotice,Icon,PageTitle,Steps,useApp} from '../lib';
 
 export default function Ready(){const {focus,setAssessment}=useApp(),navigate=useNavigate();const [busy,setBusy]=useState(false),[error,setError]=useState<unknown>(null);if(!focus)return <Navigate to="/portfolio" replace/>;

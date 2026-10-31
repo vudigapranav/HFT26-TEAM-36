@@ -1,7 +1,7 @@
 import {createContext,useContext,useState,type ReactNode,type ButtonHTMLAttributes} from 'react';
 import {Link,useNavigate} from 'react-router-dom';
 import {api as rawApi,getMode,setMode,resetDemo,finishDemo} from './api.mjs';
-import type {AuthUser,PortfolioResponse,FocusLane,AssessmentState,RunResult} from '@torquecode/contracts';
+import type {AuthUser,PortfolioResponse,FocusLane,AssessmentState,RunResult} from './types';
 export {getMode,setMode,resetDemo,finishDemo};
 let leaveHandler:(()=>Promise<void>)|null=null;
 export function registerLeaveHandler(handler:(()=>Promise<void>)|null){leaveHandler=handler;}

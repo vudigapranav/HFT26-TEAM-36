@@ -1,6 +1,6 @@
 import {useEffect,useState,type FormEvent} from 'react';
 import {Link,useLocation,useNavigate} from 'react-router-dom';
-import type {AuthUser} from '@torquecode/contracts';
+import type {AuthUser} from '../types';
 import {api,Button,ErrorNotice,Icon,useApp} from '../lib';
 
 export default function Auth(){

@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import {HashRouter,Routes,Route} from 'react-router-dom';
 import {AppProvider,api,resetDemo} from '../src/lib';
 import {samplePortfolio} from '../src/demo-data.mjs';
-import type {AssessmentState,CandidateTask} from '../src/contracts';
+import type {AssessmentState,CandidateTask} from '../src/types';
 import Auth from '../src/pages/Auth';import Portfolio from '../src/pages/Portfolio';import Quiz from '../src/pages/Quiz';import Ready from '../src/pages/Ready';import Workspace from '../src/pages/Workspace';import Report from '../src/pages/Report';
 HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','')};
 HTMLDialogElement.prototype.close=function(){this.removeAttribute('open')};

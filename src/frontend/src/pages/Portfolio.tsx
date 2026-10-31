@@ -1,6 +1,6 @@
 import {useMemo,useRef,useState,type ChangeEvent,type DragEvent} from 'react';
 import {useNavigate} from 'react-router-dom';
-import type {Portfolio as PortfolioData,PortfolioResponse} from '@torquecode/contracts';
+import type {Portfolio as PortfolioData,PortfolioResponse} from '../types';
 import {samplePortfolio} from '../demo-data.mjs';
 import {api,Button,Chips,ErrorNotice,Icon,PageTitle,Steps,useApp,type Problem} from '../lib';
 

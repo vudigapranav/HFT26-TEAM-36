@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {api,Button,ErrorNotice,Icon,PageTitle,useApp} from '../lib';
-import type {AssessmentState,AuthUser,FocusLane,PortfolioResponse} from '@torquecode/contracts';
+import type {AssessmentState,AuthUser,FocusLane,PortfolioResponse} from '../types';
 import {samplePortfolio} from '../demo-data.mjs';
 export default function FinishPreview(){
  const model=useApp(),navigate=useNavigate(),[error,setError]=useState<unknown>(null),[stage,setStage]=useState('Opening the sample session…');

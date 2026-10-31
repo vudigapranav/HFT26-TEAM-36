@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {useNavigate} from 'react-router-dom';
 import Editor,{type OnMount} from '@monaco-editor/react';
-import type {AssessmentState,CandidateTask,File,RunResult} from '@torquecode/contracts';
+import type {AssessmentState,CandidateTask,File,RunResult} from '../types';
 import '../monaco-setup';
 import FinishAssessment,{type FinishPhase} from '../components/FinishAssessment';
 import {api,Button,Chips,ErrorNotice,finishDemo,Icon,message,registerLeaveHandler,Skeleton,useApp,type Problem} from '../lib';

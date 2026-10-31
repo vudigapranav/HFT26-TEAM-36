@@ -1,6 +1,6 @@
 import {useEffect,useState,type CSSProperties} from 'react';
 import {Link} from 'react-router-dom';
-import type {AieScore,Report as AssessmentReport} from '@torquecode/contracts';
+import type {AieScore,Report as AssessmentReport} from '../types';
 import {api,Button,ErrorNotice,Icon,Skeleton,useApp} from '../lib';
 import '../report-react.css';
 

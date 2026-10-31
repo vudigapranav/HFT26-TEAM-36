@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState,type CSSProperties,type KeyboardEvent} from 'react';
 import {useNavigate} from 'react-router-dom';
-import type {FocusLane,QuizQuestion} from '@torquecode/contracts';
+import type {FocusLane,QuizQuestion} from '../types';
 import {api,Button,Chips,ErrorNotice,Icon,PageTitle,Skeleton,Steps,useApp} from '../lib';
 
 const key='torque-quiz-answers';
