@@ -191,3 +191,22 @@ Newest entries at the bottom. Written by `/ship`.
 - Wired the real factory with K8-compatible wiring. Fixed the compiled build to include Python validation scripts after the real HTTP check exposed their omission.
 - Final source suite: 391 passed, 0 failed/skipped across 26 files with isolated PostgreSQL and real Docker. Typecheck/build passed; Python reporter 4 passed; release-check fixtures 6 passed. Built HTTP journey, verification flag, restart durability and exactly-once expiry recovery passed on a separate port/disposable database. No live LLM or cloud verification claimed; assistant correctly unavailable without a key.
 - No frontend changes. Details and explicit limits: docs/reviews/2026-10-31-independent-validation.md. Current main remains b0fad23; K8 PR #58 is separate and needs its old fallback mocks aligned with semantic verification before merging.
+
+## 2026-10-31 — independent validation shipped (PR #60) + K8 rebase notes (PR #58)
+- Pushed the local-only commit 047d5d9 (`pranav/independent-task-validation`, based on b0fad23). main had not moved, so no rebase was needed and nothing was resolved. The independent-oracle path (semantic_verified, structural_valid, family provenance) is unchanged.
+- Ownership: the commit adds generation/*, contracts/internal.ts, api/postgres-assessment-store.ts and api/wiring.ts to Pranav's paths in scripts/owners.json (Karthik-owned areas, approved by Pranav as lead). The pre-push hook passed with no bypass.
+- Step-3 results on Pranav's Mac (Node 26.10.0, Docker 29.7.2 with torquecode-runner-python:dev, isolated PostgreSQL **15.15**, the only version installed; the stack pins 16):
+  - `pnpm install --frozen-lockfile --ignore-scripts` ✅; `pnpm typecheck` ✅; `pnpm build` ✅
+  - `RUNNER=docker TORQUECODE_REQUIRE_DB=1 TORQUECODE_ALL_DB_TESTS=1 pnpm test:auth`: **26 files, 391 passed, 0 failed, 0 skipped**
+  - `pnpm test:python`: **4 passed**
+  - `pnpm ownership:check` ✅ (0 uncommitted files; the committed diff was checked by the pre-push hook)
+  - Not re-run here: the built-backend HTTP journey and restart/expiry checks in docs/reviews/2026-10-31-independent-validation.md (author's earlier run).
+- PR #60 opened and merged with a merge commit as vudigapranav (d6e120e, no Co-Authored-By trailer). Limits stated in the PR: Python only, 4 reviewed families, finite oracle checks, no live provider or cloud verified.
+- PR #58 (karthik/k8-final @ 1f8b091) review, by trial-merging it onto 047d5d9 in a scratch worktree (Karthik's branch not edited):
+  - typecheck ✅
+  - `k8-wiring.test.ts` 1 failed / 1 passed: its runner throws, which assumes fallback needs no verification → `expected 'unavailable' to be 'ok'`.
+  - `TORQUECODE_REQUIRE_DB=1 pnpm test:persistence` 22 passed, but the K8 journey passes only via #60's test-only `certifiedFixture` validation double.
+  - One conflict in persistence.integration.test.ts (both sides add tests at the same place). wiring.ts is identical.
+  - #58's BACKEND_DECISIONS K8 section has 3 claims superseded by #60.
+  - Exact change list posted: https://github.com/vudigapranav/HFT26-TEAM-36/pull/58#issuecomment-6537402894
+- Next: Karthik rebases #58 onto main (with #60) and re-runs test:auth with 0 skips; then P13/claims check if still needed.
