@@ -11,5 +11,5 @@ export interface Ports {
   parsePortfolio(input: unknown): SeamResult<CandidateProfile | { errors: { path: string; message: string }[] }>;
   quiz(input: { profile: CandidateProfile; answers?: { question_id: string; option_id: string }[] }): SeamResult<{ questions: QuizQuestion[] } | { focus_lane: FocusLane }>;
   calculateAie(input: { events: Event[]; runs: InternalRunResult[]; task: PrivateTask }): SeamResult<AieScore>;
-  buildReport(input: { session: Session; tasks: PrivateTask[]; runs: InternalRunResult[]; events: Event[] }): SeamResult<Report>;
+  buildReport(input: { profile?: CandidateProfile | undefined; session: Session; tasks: PrivateTask[]; runs: InternalRunResult[]; events: Event[] }): SeamResult<Report>;
 }

@@ -11,7 +11,9 @@
 // highest of session.current_tier and any tier named in tier_unlocked / tier_upgraded events ({ tier } or K10's { unlocks_used }). Tasks of
 // locked tiers get no row and don't affect correctness, focus areas or outcome.
 import type { AieScore, Report, Tier } from '@torquecode/contracts';
-import type { Event, InternalRunResult, PrivateTask, SeamResult, Session } from '../contracts/internal.js';
+import type { Event, InternalRunResult, SeamResult, Session } from '../contracts/internal.js';
+import { claimsVsDemonstrated, attemptedTaskIds } from './claims.js';
+import type { Ports } from '../contracts/seams.js';
 import { computeAie } from './aie.js';
 
 export const CORRECTNESS_WEIGHT = 80;
@@ -35,7 +37,7 @@ export function highestTierRank(session: Pick<Session, 'current_tier'>, events: 
   return Math.max(TIER_ORDER.indexOf(session.current_tier), ...fromEvents);
 }
 
-export function buildReportValue(input: { session: Session; tasks: PrivateTask[]; runs: InternalRunResult[]; events: Event[] }): Report {
+export function buildReportValue(input: Parameters<Ports['buildReport']>[0]): Report {
   const { session, runs, events } = input;
   const reached = highestTierRank(session, events);
   const tasks = input.tasks.filter(t => TIER_ORDER.indexOf(t.tier) <= reached);
@@ -99,6 +101,7 @@ export function buildReportValue(input: { session: Session; tasks: PrivateTask[]
     .filter(s => s.count > 0);
 
   return {
+    ...(input.profile ? { claims: claimsVsDemonstrated(input.profile, tasks, rows.map(x => x.row), attemptedTaskIds(events)) } : {}),
     report_id: `report-${session.id}`.slice(0, 80),
     session_id: session.id,
     tasks: rows.map(x => x.row).slice(0, MAX_REPORT_TASKS),
@@ -110,6 +113,6 @@ export function buildReportValue(input: { session: Session; tasks: PrivateTask[]
 }
 
 // Seam signature from contracts/seams.ts (Ports.buildReport).
-export function buildReport(input: { session: Session; tasks: PrivateTask[]; runs: InternalRunResult[]; events: Event[] }): SeamResult<Report> {
+export function buildReport(input: Parameters<Ports['buildReport']>[0]): SeamResult<Report> {
   return { kind: 'ok', value: buildReportValue(input) };
 }

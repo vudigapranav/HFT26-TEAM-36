@@ -194,6 +194,37 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
   const task=await call('GET',`/assessments/${id}/tasks/question-1`,cookie);
   expect(task.json().title).toBe('Generated fixture');expect(task.body).not.toContain('reference_files');
  });
+  it('labels successful all-seed generation correctly',async()=>{
+    await app.close();
+    const generated = {
+      novice: structuredClone(bank.novice![0]!),
+      adept: structuredClone(bank.adept![0]!),
+      master: structuredClone(bank.master![0]!),
+    };
+    const generateAssessment: Ports['generateAssessment'] = async()=>({
+      kind:'ok',value:generated
+    });
+    const validateTask: Ports['validateTask'] = async ({task})=>({
+      kind:'ok',
+      value:{
+        task_id:task.task_id,
+        valid:true,
+        gates:[{gate:'reference',status:'pass',reason:'Reference passed'}]
+      }
+    });
+    app=await start({generateAssessment,validateTask});
+    const cookie=await account();
+    const id=await create(cookie);
+    const response=await call('GET',`/assessments/${id}/status`,cookie);
+    expect(response.json().generation).toMatchObject({
+      status:'ready',source:'seed_bank'
+    });
+    const saved=await pool.query(
+      'SELECT source FROM generation_jobs WHERE assessment_id=$1',[id]
+    );
+    expect(saved.rows[0].source).toBe('seed_bank');
+  });
+
  it('keeps the seed bank when deterministic validation rejects generated artifacts',async()=>{
   await app.close();
   const generateAssessment:Ports['generateAssessment']=async()=>({kind:'ok',value:{novice:bank.novice![0]!,adept:bank.adept![0]!,master:bank.master![0]!}});

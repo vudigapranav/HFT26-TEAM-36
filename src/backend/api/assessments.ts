@@ -272,7 +272,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
             const first = record.question_sets.novice![0]!;
             record.task = first.task; record.files = first.files;
           }
-          record.generation = { status: 'ready', source: adopted ? 'generated' : 'seed_bank',
+          record.generation = { status: 'ready', source: adopted && generated!.tasks.some(task => task.source === 'generated') ? 'generated' : 'seed_bank',
             progress: {}, receipts: (adopted ? generated?.receipts : undefined)?.map(g => ({ gate: g.gate, status: g.status, reason: g.reason.slice(0,300) })) ?? [] };
         });
       });
@@ -388,7 +388,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     }
     if (store.assessments.size >= store.max_assessments) throw new HttpProblem(429, 'STORE_CAPACITY');
     const started = now();
-    const record: AssessmentRecord = { session: { id: randomUUID(), user_id: user(request), started_at: new Date(started).toISOString(), expires_at: new Date(started + 3600000).toISOString(), current_tier: 'novice', status: 'active' }, task: structuredClone(seed), files: structuredClone(seed.files), events: [], runs: [], hint_level: 0,
+    const record: AssessmentRecord = { profile_snapshot: structuredClone(stored.profile), session: { id: randomUUID(), user_id: user(request), started_at: new Date(started).toISOString(), expires_at: new Date(started + 3600000).toISOString(), current_tier: 'novice', status: 'active' }, task: structuredClone(seed), files: structuredClone(seed.files), events: [], runs: [], hint_level: 0,
       tier_work: {
         novice: {
           task: structuredClone(seed),
@@ -641,7 +641,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   function buildReport(record: AssessmentRecord) {
     const tasks = TIER_ORDER.flatMap(tier => works(record, tier).map(w => w.task));
     for (const task of tasks) if (task.tier !== 'novice') real(ports.calculateAie({ events: record.events, runs: record.runs, task }));
-    return real(ports.buildReport({ session: record.session, tasks, runs: record.runs, events: record.events }));
+    return real(ports.buildReport({ session: record.session, tasks, runs: record.runs, events: record.events, profile: record.profile_snapshot ?? store.profiles.get(record.session.user_id)?.profile }));
   }
   app.get<{Querystring:{before?:string}}>('/reports', { schema: { querystring:Type.Object({before:Type.Optional(Id)},{additionalProperties:false}), response: { 200: ReportHistory, ...errors } } }, async request => {
     const rows=await store.reportHistory(request.query.before);
