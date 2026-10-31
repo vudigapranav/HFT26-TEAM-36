@@ -42,7 +42,8 @@ load_config() {
   POSTGRES_PORT="${POSTGRES_PORT:-54329}"; BACKEND_PORT="${BACKEND_PORT:-3001}"
   AUTH_ORIGIN="${AUTH_ORIGIN:-http://127.0.0.1:4177}"; RUNNER_IMAGE="${RUNNER_IMAGE:-torquecode-runner-python:dev}"
   export DATABASE_URL="postgres://torquecode:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/torquecode"
-  export APP_MODE=auth RUNNER=docker HOST=127.0.0.1 PORT="$BACKEND_PORT" AUTH_ORIGIN RUNNER_IMAGE
+  RUNNER="${RUNNER:-docker}"
+  export APP_MODE=auth RUNNER HOST=127.0.0.1 PORT="$BACKEND_PORT" AUTH_ORIGIN RUNNER_IMAGE
   export RUNNER_HARNESS_DIR="$REPO/src/backend/runner/harness"
 }
 

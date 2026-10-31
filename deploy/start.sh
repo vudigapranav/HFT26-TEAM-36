@@ -61,7 +61,7 @@ if backend_up "$BACKEND_PORT"; then
   say "Restarting backend (--restart): in-memory assessments are dropped"
   stop_backend "$BACKEND_PORT"
 fi
-say "Starting backend on http://127.0.0.1:${BACKEND_PORT} (APP_MODE=auth, RUNNER=docker)"
+say "Starting backend on http://127.0.0.1:${BACKEND_PORT} (APP_MODE=auth, RUNNER=${RUNNER})"
 # cwd must be src/backend: the seed bank and intake data are resolved from it.
 ( cd "$REPO/src/backend" && nohup node dist/api/server.js </dev/null >"$RUN/backend.log" 2>&1 & echo $! >"$RUN/backend.pid" )
 HEALTH="$(wait_health "$BACKEND_PORT" 60)" || { tail -20 "$RUN/backend.log" >&2; die "Backend did not become healthy; full log: deploy/.run/backend.log"; }
