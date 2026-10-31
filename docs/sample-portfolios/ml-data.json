@@ -1,0 +1,22 @@
+{
+  "candidate": { "name": "Meera Iyer", "email": "meera.iyer@example.org" },
+  "projects": [
+    {
+      "name": "ChurnLens",
+      "description": "Customer churn prediction with feature engineering and model explainability.",
+      "tech_stack": ["Python", "Pandas", "Scikit-Learn", "Matplotlib", "Jupyter"],
+      "role": "ML engineer",
+      "highlights": ["ROC-AUC 0.87 on held-out data", "Rolling-window usage features"]
+    },
+    {
+      "name": "ReviewSense",
+      "description": "Sentiment classifier for product reviews.",
+      "tech_stack": ["Python", "TensorFlow", "Keras", "NumPy"],
+      "role": "ML engineer",
+      "highlights": ["Text cleaning pipeline", "Deduplicated 50k noisy reviews"]
+    }
+  ],
+  "tech_stack": ["Python", "Pandas", "NumPy", "Scikit-Learn", "TensorFlow", "Jupyter"],
+  "skills": ["Machine Learning", "Deep Learning", "Data Analysis", "NLP"],
+  "dsa_topics_solved": ["arrays", "hashing", "sliding window", "sorting", "dp"]
+}

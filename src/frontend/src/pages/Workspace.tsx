@@ -89,7 +89,11 @@ export default function Workspace(){
  },[aid]);
  useEffect(()=>{chatLog.current?.scrollTo({top:chatLog.current.scrollHeight,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});},[chats,task?.task_id]);
  async function switchTask(id:string){if(workingRef.current||id===task?.task_id)return;setNotice(null);try{await save();const next=normalize(await api<CandidateTask>('GET',`/assessments/${aid}/tasks/${id}`));setTask(next);setFileIndex(0);setResultTab('tests');setChatInput('');}catch(e){setNotice(e);}}
- function edit(value:string|undefined){if(value===undefined||!taskRef.current)return;const current=taskRef.current;if(!current.files[fileIndex]?.editable)return;const next={...current,files:current.files.map((f,i)=>i===fileIndex?{...f,content:value}:f)};taskRef.current=next;version.current++;dirtyRef.current=true;setDirty(true);setSaveState('Unsaved changes');setTask(next);}
+ function edit(value:string|undefined){if(value===undefined||!taskRef.current)return;const current=taskRef.current;
+  // Attribute the change to the file whose Monaco model changed, not the selected tab: on a tab switch
+  // Monaco can report the previous model's text, which used to overwrite another file.
+  const modelPath=editorRef.current?.getModel()?.uri.path??'';const idx=current.files.findIndex(f=>modelPath.endsWith(`/${current.task_id}/${f.path}`));
+  if(idx<0||!current.files[idx]?.editable||current.files[idx]!.content===value)return;const next={...current,files:current.files.map((f,i)=>i===idx?{...f,content:value}:f)};taskRef.current=next;version.current++;dirtyRef.current=true;setDirty(true);setSaveState('Unsaved changes');setTask(next);}
  async function execute(mode:'run'|'submit'){
   if(workingRef.current||!taskRef.current)return;workingRef.current=true;setWorking(mode);setNotice(null);
   try{await save();const id=taskRef.current.task_id;const result=await api<RunResult>('POST',`/assessments/${aid}/tasks/${id}/${mode}`,{});modelRef.current.setResults(old=>({...old,[id]:result}));setResultTab('tests');accept(await api<AssessmentState>('GET',`/assessments/${aid}/status`));if(mode==='submit')modelRef.current.toast(__DEMO_BUILD__&&modelRef.current.mode==='demo'?'Sample submission recorded.':'Submission recorded.');}

@@ -1,0 +1,22 @@
+{
+  "candidate": { "name": "Rahul Menon", "email": "rahul.menon@example.org" },
+  "projects": [
+    {
+      "name": "RateGuard",
+      "description": "API gateway with per-client rate limiting and request logging.",
+      "tech_stack": ["Python", "FastAPI", "PostgreSQL", "Redis", "Docker"],
+      "role": "Backend developer",
+      "highlights": ["Sliding-window rate limiter", "p95 latency under 40 ms"]
+    },
+    {
+      "name": "OrderFlow",
+      "description": "Order-processing microservice with event deduplication.",
+      "tech_stack": ["Java", "Spring Boot", "Kafka", "MySQL"],
+      "role": "Backend developer",
+      "highlights": ["Idempotent consumers", "Dead-letter queue for failed events"]
+    }
+  ],
+  "tech_stack": ["Python", "FastAPI", "Java", "Spring Boot", "PostgreSQL", "Redis", "Docker"],
+  "skills": ["REST APIs", "Microservices", "SQL", "Caching"],
+  "dsa_topics_solved": ["arrays", "hashing", "sliding window", "two pointers", "sorting"]
+}

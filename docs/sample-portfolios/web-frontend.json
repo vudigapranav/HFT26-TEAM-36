@@ -1,0 +1,22 @@
+{
+  "candidate": { "name": "Aisha Verma", "email": "aisha.verma@example.org" },
+  "projects": [
+    {
+      "name": "ShopLite",
+      "description": "Responsive e-commerce storefront with cart, filters and checkout flow.",
+      "tech_stack": ["React.js", "TypeScript", "Tailwind CSS", "Redux", "Vite"],
+      "role": "Frontend developer",
+      "highlights": ["Cut bundle size 35% with code splitting", "Built a reusable product-filter hook"]
+    },
+    {
+      "name": "TaskBoard",
+      "description": "Kanban board with drag-and-drop and real-time sync.",
+      "tech_stack": ["Next.js", "Node.js", "Express.js", "MongoDB"],
+      "role": "Full-stack developer",
+      "highlights": ["Optimistic UI updates", "Debounced search across 10k tasks"]
+    }
+  ],
+  "tech_stack": ["React.js", "Next.js", "TypeScript", "JavaScript", "HTML", "CSS", "Tailwind CSS"],
+  "skills": ["Frontend Development", "Responsive Design", "React Hooks", "REST APIs"],
+  "dsa_topics_solved": ["arrays", "hashing", "sliding window", "two pointers", "strings"]
+}
