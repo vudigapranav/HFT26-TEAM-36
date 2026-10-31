@@ -93,15 +93,20 @@ Merged into `main` and covered by tests (checked at `main` @ `19df7ff`):
 | Question sets in one 60-minute session: everyone starts on the first set; after submitting every question (right or wrong) the candidate may click "Unlock next questions", at most twice; levels are never named in the assessment API; earlier questions stay open (K10, PR #42) | ✅ merged |
 | Assessment API: server-side timer, autosave, Run, Submit, integrity events, auto-submit at expiry, neutral question IDs, locked sets refused (403) | ✅ merged |
 | Hints and the guarded assistant endpoint, only on later question sets (K10, PR #42; R5 guards, measured against the live model in R5-live) | ✅ merged; the assistant needs a Featherless key, otherwise it returns 503 |
-| Three seed question sets: Novice bug fix, Adept multi-file feature, Master debugging with a performance limit (K7), each checked on the real Docker runner (R7) | ✅ merged |
+| Six reviewed Python task families (`generation/families.ts`): 2 Novice (request peak, second-largest distinct), 2 Adept multi-file features (event dedupe with hashing; bucket rollup, arrays only), 2 Master debugging tasks with a pinned performance workload (session window with sliding_window; error-budget spans, arrays only). Any portfolio that claims arrays reaches all three sets (#60, #63) | ✅ merged; seeds checked on the real Docker runner |
 | Docker sandbox runner with anti-tamper split-container grading (R2, R3) | ✅ merged |
-| Deterministic task validation engine: schema, topic bound (Python AST), import allow-list, runner format, leakage, reference passes 3×, starter F2P/P2P, Master performance (K5, PR #44) | ✅ merged; wired as the `validateTask` seam, used once generation lands |
+| Deterministic task validation engine: schema, claimed topics + reviewed implementation provenance, import allow-list, trusted grading template, pinned contract/examples, leakage, reference vs **independent TypeScript oracle** in 3 isolated runs, starter F2P/P2P, Master performance workload (K5, hardened in #60) | ✅ merged; every released task (generated or fallback) must be `semantic_verified` |
+| Task generation (K6, #54 → #60): the model only **selects** a reviewed family and scenario; contracts, code, tests and expected answers come from reviewed templates and oracles. Provider down → verified seed fallback, marked `seed_bank` | ✅ merged |
+| PostgreSQL persistence of profiles, assessments, files, runs, events, generation jobs and reports; restart-safe expiry; report history `GET /reports` (K11, #56) | ✅ merged |
 | AI efficiency score (context §12) and report builder that only counts unlocked question sets | ✅ merged |
 | One-command local deployment: PostgreSQL 16 in Compose, backend on the host, verify script (R6) | ✅ merged; verified on Windows, not yet on the demo Mac |
 
 **Claims vs demonstrated (P13):** reports include the assessment's claimed topics, the task that tested each one, and whether its final submission demonstrated that topic. Unattempted claims are explicitly marked untested. Claims are captured when the assessment starts, so re-uploading a portfolio does not rewrite earlier results.
 
-In progress during the hackathon: persistent assessments across restarts (K11), live task generation (K6), cloud deployment (R6b) and the frontend.
+**Not finished yet (31 Oct, 08:15 IST):**
+- **Frontend** (React + Vite + Monaco, live-only client of this API): PR #59, under local end-to-end verification. Not merged.
+- **Cloud deployment** (Vercel frontend + one VM for backend, Docker sandbox and PostgreSQL): kit prepared in `deploy/cloud/` (R6b, #55) and runbook in [`docs/deploy/VERCEL_VM_RUNBOOK.md`](docs/deploy/VERCEL_VM_RUNBOOK.md). **Not deployed**: no VM host, Vercel URL or live verification yet.
+- **K8 final integration** (PR #58): needs a rebase onto the independent-validation policy; see [`docs/reviews/2026-10-31-pr58-review.md`](docs/reviews/2026-10-31-pr58-review.md).
 
 **Future scope (pitch only, not built):** project-based assessments built around the candidate's own repositories, and camera-based proctoring.
 
@@ -168,4 +173,4 @@ All code was written during the hackathon. Open-source libraries are used under 
 
 ### Current task validation scope
 
-K5/K6 now use four reviewed Python families with independent answer oracles. The model selects a family/scenario; fixed templates supply the contract, code and examples. Unsupported or unverified tasks are withheld, and seed fallback must pass the same correctness checks. This supports bounded domain contextualization, not arbitrary task generation or every candidate technology stack. See [the validation policy](docs/BACKEND_DECISIONS.md#2026-10-31--independent-validation-policy-supersedes-earlier-k5k6-descriptions).
+K5/K6 now use six reviewed Python families with independent answer oracles. The model selects a family/scenario; fixed templates supply the contract, code and examples. Unsupported or unverified tasks are withheld, and seed fallback must pass the same correctness checks. This supports bounded domain contextualization, not arbitrary task generation or every candidate technology stack. See [the validation policy](docs/BACKEND_DECISIONS.md#2026-10-31--independent-validation-policy-supersedes-earlier-k5k6-descriptions).
