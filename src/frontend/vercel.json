@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "pnpm install --frozen-lockfile --ignore-scripts",
+  "buildCommand": "pnpm run build",
+  "outputDirectory": "dist",
+  "redirects": [
+    { "source": "/landing", "destination": "/landing/index.html", "permanent": false },
+    { "source": "/landing/", "destination": "/landing/index.html", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://BACKEND_HOST/:path*" },
+    { "source": "/((?!api/|assets/|landing/|designs/).*)", "destination": "/index.html" }
+  ]
+}
