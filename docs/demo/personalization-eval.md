@@ -69,3 +69,16 @@ Every row below was certified by K5 (independent oracle, reference x3, starter r
 | security_student | master | session_window_v1 | — | — | reviewed default | — |  |
 
 Receipt cache: 15 hits, 39 misses, 39 stored.
+
+## End-to-end preparation latency (real API, PostgreSQL + Docker runner, this Linux box, 31 Oct)
+
+Same `ecommerce_backend` portfolio, fresh backend process, measured from `POST /assessments` to `generation.status=ready`:
+
+| Run | Before (main @ 0d113dd) | After |
+|---|---|---|
+| 1st assessment (cold) | 74.7 s | 38.5 s |
+| 2nd assessment (warm receipts) | 74.7 s | 4.1 s |
+| 3rd assessment (warm receipts) | — | 4.1 s |
+
+`remaining_sec` is 3599–3600 when questions are released (the timer now starts at release; before it was ~3510).
+Featherless was unreachable from this machine (network policy), so Stage B fell back to deterministic selection in every run above.
