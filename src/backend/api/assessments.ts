@@ -464,6 +464,15 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     return state(record);
   });
   app.get('/assessments/:id/status', { schema: { response: { 200: AssessmentState, ...errors } } }, async request => state(await owned(request)));
+  // Candidate finishes early (button, or the 3rd tab switch): close the session through the same
+  // path as timer expiry, i.e. auto-submit saved files, session_end and the final report.
+  app.post('/assessments/:id/finish', { schema: { body: empty, response: { 200: AssessmentState, ...errors } } }, async request => {
+    const record = await owned(request);
+    active(record);
+    record.session.expires_at = new Date(Math.min(now(), Date.parse(record.session.expires_at))).toISOString();
+    await expire(record);
+    return state(record);
+  });
   app.post('/assessments/:id/tier/upgrade', {
     schema: { body: empty, response: { 200: AssessmentState, ...errors } },
   }, async request => {

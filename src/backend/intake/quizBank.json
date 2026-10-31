@@ -48,7 +48,8 @@
         { "id": "a", "text": "Scanning a list with two indexes or a moving window", "points_to": { "topics": ["two_pointers", "sliding_window"] } },
         { "id": "b", "text": "Splitting a problem into smaller copies of itself", "points_to": { "topics": ["recursion", "dp"] } },
         { "id": "c", "text": "Walking through connected items like friends or routes", "points_to": { "topics": ["bfs_dfs", "graphs"] } },
-        { "id": "d", "text": "Keeping things in order: stacks, queues, sorting", "points_to": { "topics": ["stack", "queue", "sorting"] } }
+        { "id": "d", "text": "Keeping things in order: stacks, queues, sorting", "points_to": { "topics": ["stack", "queue", "sorting"] } },
+        { "id": "e", "text": "A plain loop that checks each item once", "points_to": {} }
       ]
     },
     {

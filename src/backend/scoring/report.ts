@@ -14,7 +14,7 @@ import type { AieScore, Report, Tier } from '@torquecode/contracts';
 import type { Event, InternalRunResult, SeamResult, Session } from '../contracts/internal.js';
 import { claimsVsDemonstrated, attemptedTaskIds } from './claims.js';
 import type { Ports } from '../contracts/seams.js';
-import { computeAie } from './aie.js';
+import { computeAie, creditedCounts, creditedPassRate } from './aie.js';
 
 export const CORRECTNESS_WEIGHT = 80;
 export const AI_TIERS: Tier[] = ['adept', 'master'];
@@ -61,8 +61,9 @@ export function buildReportValue(input: Parameters<Ports['buildReport']>[0]): Re
       task, attempted, final, aie,
       row: {
         task_id: task.task_id,
-        passed: final?.passed ?? 0,
-        total: final?.total ?? task.tests.reduce((s, t) => s + t.ids.length, 0),
+        // Tests fixed beyond the untouched starter: no submit, or an unchanged submit, reads 0.
+        passed: final ? creditedCounts(final.passed, final.total, task).passed : 0,
+        total: final ? creditedCounts(final.passed, final.total, task).total : (task.f2p_ids?.length || task.tests.reduce((s, t) => s + t.ids.length, 0)),
         time_sec: start === undefined ? 0 : r2(Math.max(0, end - start) / 1000),
         hints_used: ev.filter(e => e.type === 'hint_served').length,
         aie,
@@ -70,7 +71,8 @@ export function buildReportValue(input: Parameters<Ports['buildReport']>[0]): Re
     };
   });
 
-  const passRate = (x: (typeof rows)[number]) => (x.final && x.final.total > 0 ? x.final.passed / x.final.total : 0);
+  // Credit only tests passed beyond the untouched starter (P2P tests pass on it by design).
+  const passRate = (x: (typeof rows)[number]) => (x.final ? creditedPassRate(x.final.passed, x.final.total, x.task) : 0);
   const correctness = rows.length ? rows.reduce((s, x) => s + passRate(x), 0) / rows.length : 0;
   const aieRows = rows.filter(x => x.aie !== null);
   const aiePart = aieRows.length ? aieRows.reduce((s, x) => s + (x.aie?.score ?? 0), 0) / aieRows.length : null;

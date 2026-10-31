@@ -17,13 +17,17 @@ export function claimedDomains(profile: CandidateProfile): Domain[] {
 const touches = (o: QuizOptionData, domains: Domain[], topics: Topic[]) =>
   (o.points_to.domains ?? []).some(d => domains.includes(d)) || (o.points_to.topics ?? []).some(t => topics.includes(t as Topic));
 
+// Neutral options point nowhere, so they never move the lane outside the claims; they keep a real choice.
+const neutral = (o: QuizOptionData) => !(o.points_to.domains ?? []).length && !(o.points_to.topics ?? []).length;
+
 export function selectQuestions(profile: CandidateProfile, bank: QuizBank = quizBank): QuizQuestion[] {
   const domains = claimedDomains(profile);
   return bank.questions
     .filter(q => q.options.some(o => touches(o, domains, profile.claimed_topics)))
-    .slice(0, MAX_QUESTIONS)
     .map(q => ({ id: q.id, prompt: q.text,
-      options: q.options.filter(o => touches(o, domains, profile.claimed_topics)).map(o => ({ id: o.id, text: o.text })) }));
+      options: q.options.filter(o => touches(o, domains, profile.claimed_topics) || neutral(o)).map(o => ({ id: o.id, text: o.text })) }))
+    .filter(q => q.options.length >= 2) // a single option is not a choice
+    .slice(0, MAX_QUESTIONS);
 }
 
 export class QuizAnswerError extends Error {}
