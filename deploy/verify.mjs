@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const backend = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'backend');
 const port = Number(process.env.BACKEND_PORT ?? process.env.PORT ?? 3001);
-const origin = process.env.AUTH_ORIGIN ?? 'http://localhost:5173';
+const origin = process.env.AUTH_ORIGIN ?? 'http://127.0.0.1:4177';
 const results = [];
 const check = (name, ok, detail = '') => {
   results.push({ name, ok: Boolean(ok), ...(detail ? { detail } : {}) });
@@ -53,6 +53,21 @@ const portfolioJson = () => JSON.parse(existsSync(demoPortfolio) ? readFileSync(
 const PRIVATE = [/reference_files/, /hint_ladder/, /test_hidden/, /f2p_ids/, /p2p_ids/];
 const noPrivate = (name, text) => check(`${name}: no private task data`, !PRIVATE.some(p => p.test(text)));
 
+// Since K11 questions are released only after the generation job verifies them (POST /assessments returns
+// generation.status "queued" and GET .../tasks answers 409 ASSESSMENT_GENERATING until then).
+const BUSY = new Set(['queued', 'generating', 'validating']);
+async function released(call, created, limitMs = 300_000) {
+  let state = created;
+  const deadline = Date.now() + limitMs;
+  while (state.generation && BUSY.has(state.generation.status) && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 2000));
+    const status = await call('GET', `/assessments/${created.assessment_id}/status`);
+    if (status.status !== 200) throw new Error(`assessment status failed: HTTP ${status.status}`);
+    state = status.json;
+  }
+  return state;
+}
+
 async function journey(base) {
   const call = client(base);
   const health = await call('GET', '/health');
@@ -66,7 +81,11 @@ async function journey(base) {
   check('quiz answered', (await call('POST', '/onboarding-quiz', { answers })).status === 200);
   const created = await call('POST', '/assessments', {});
   check('assessment created', created.status === 201, created.text.slice(0, 200));
-  const { assessment_id: id, task_id: taskId, report_id: reportId } = created.json;
+  const started = Date.now();
+  const ready = await released(call, created.json);
+  check('questions released after verification', !ready.generation || ready.generation.status === 'ready', JSON.stringify(ready.generation ?? {}).slice(0, 300));
+  check(`generation took ${Math.round((Date.now() - started) / 1000)} s`, true);
+  const { assessment_id: id, task_id: taskId, report_id: reportId } = ready;
   const task = await call('GET', `/assessments/${id}/tasks/${taskId}`);
   check('task served', task.status === 200);
   noPrivate('task', task.text);
@@ -118,13 +137,21 @@ async function outage() {
     await call('POST', '/portfolio', portfolioJson());
     const quiz = await call('GET', '/onboarding-quiz');
     await call('POST', '/onboarding-quiz', { answers: quiz.json.questions.map(q => ({ question_id: q.id, option_id: q.options[0].id })) });
-    const created = (await call('POST', '/assessments', {})).json;
-    const task = (await call('GET', `/assessments/${created.assessment_id}/tasks/${created.task_id}`)).json;
-    const run = await call('POST', `/assessments/${created.assessment_id}/tasks/${created.task_id}/run`, { files: task.files.filter(f => f.editable) });
-    check('outage: Run returns 503, not a grade', run.status === 503, `${run.status} ${run.text.slice(0, 200)}`);
-    check('outage: no Docker host/socket text leaks', !/127\.0\.0\.1:9|docker\.sock|npipe|tcp:\/\//.test(run.text));
+    const created = await released(call, (await call('POST', '/assessments', {})).json);
+    if (created.generation?.status === 'failed') {
+      // Without a sandbox no question can be verified, so none is released and nothing is graded.
+      const blocked = await call('GET', `/assessments/${created.assessment_id}/tasks/${created.task_id}`);
+      check('outage: unverified questions are withheld', blocked.status !== 200, `${blocked.status}`);
+      check('outage: no Docker host/socket text leaks', !/127\.0\.0\.1:9|docker\.sock|npipe|tcp:\/\//.test(JSON.stringify(created) + blocked.text));
+    } else {
+      const task = (await call('GET', `/assessments/${created.assessment_id}/tasks/${created.task_id}`)).json;
+      const run = await call('POST', `/assessments/${created.assessment_id}/tasks/${created.task_id}/run`, { files: task.files.filter(f => f.editable) });
+      check('outage: Run returns 503, not a grade', run.status === 503, `${run.status} ${run.text.slice(0, 200)}`);
+      check('outage: no Docker host/socket text leaks', !/127\.0\.0\.1:9|docker\.sock|npipe|tcp:\/\//.test(run.text));
+    }
     const report = await call('GET', `/reports/${created.report_id}`);
-    check('outage: report has no graded run', report.status === 200 && report.json.tasks.every(t => t.passed === 0), report.text.slice(0, 200));
+    // Either no report for an unverified assessment, or one with no graded run.
+    check('outage: report has no graded run', report.status !== 200 || report.json.tasks.every(t => t.passed === 0), report.text.slice(0, 200));
   } finally {
     child.kill('SIGTERM');
   }

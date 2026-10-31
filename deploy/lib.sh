@@ -40,7 +40,7 @@ load_config() {
   load_env_file "$REPO/.env"  # only fills values deploy/.env left blank (e.g. FEATHERLESS_API_KEY)
   : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD missing in deploy/.env}"
   POSTGRES_PORT="${POSTGRES_PORT:-54329}"; BACKEND_PORT="${BACKEND_PORT:-3001}"
-  AUTH_ORIGIN="${AUTH_ORIGIN:-http://localhost:5173}"; RUNNER_IMAGE="${RUNNER_IMAGE:-torquecode-runner-python:dev}"
+  AUTH_ORIGIN="${AUTH_ORIGIN:-http://127.0.0.1:4177}"; RUNNER_IMAGE="${RUNNER_IMAGE:-torquecode-runner-python:dev}"
   export DATABASE_URL="postgres://torquecode:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/torquecode"
   export APP_MODE=auth RUNNER=docker HOST=127.0.0.1 PORT="$BACKEND_PORT" AUTH_ORIGIN RUNNER_IMAGE
   export RUNNER_HARNESS_DIR="$REPO/src/backend/runner/harness"
