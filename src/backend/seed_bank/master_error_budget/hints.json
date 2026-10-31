@@ -1,0 +1,5 @@
+[
+  "Compare a span total from the report with the same span added up by hand, starting from the first minute.",
+  "Check whether the running totals count any minute twice, then check how a span that lands exactly on the budget is classified.",
+  "Build the running totals once and answer every span by subtracting two of them, instead of re-adding minutes for each query."
+]

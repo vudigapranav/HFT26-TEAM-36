@@ -2,19 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { loadSeedBank } from '../../api/seed-bank.js';
 
 describe('K10 reviewed question sets', () => {
-  it('loads all three actual seed tasks', async () => {
+  it('loads every reviewed seed task, richer-topic seeds first', async () => {
     const bank = await loadSeedBank();
 
-    expect(bank.novice).toHaveLength(1);
-    expect(bank.adept).toHaveLength(1);
-    expect(bank.master).toHaveLength(1);
-
-    expect(bank.novice?.[0]?.task_id)
-      .toBe('seed-novice-request-summary');
-    expect(bank.adept?.[0]?.task_id)
-      .toBe('seed-adept-event-dedupe');
-    expect(bank.master?.[0]?.task_id)
-      .toBe('seed-master-session-window');
+    expect(bank.novice?.map(t => t.task_id)).toEqual(['seed-novice-request-summary']);
+    expect(bank.adept?.map(t => t.task_id))
+      .toEqual(['seed-adept-event-dedupe', 'seed-adept-bucket-rollup']);
+    expect(bank.master?.map(t => t.task_id))
+      .toEqual(['seed-master-session-window', 'seed-master-error-budget']);
+    // Arrays-only Adept/Master seeds keep every portfolio able to reach all three sets.
+    expect(bank.adept?.[1]?.dsa_topics).toEqual(['arrays']);
+    expect(bank.master?.[1]?.dsa_topics).toEqual(['arrays']);
   });
 
   it('keeps server-only data separate from candidate files', async () => {

@@ -69,7 +69,7 @@ describe('bounded generator control flow',()=>{
   expect(model.calls).toHaveLength(2);
  });
  it('unsupported coverage fails before spending any model call',async()=>{
-  const model=chat();const result=await factory({chat:model.fn})({profile:{...profile,claimed_topics:['arrays']},focus_lane:lane,progress:()=>{}},ctx());
+  const model=chat();const result=await factory({chat:model.fn})({profile:{...profile,claimed_topics:['strings']},focus_lane:lane,progress:()=>{}},ctx());
   expect(result.kind).toBe('unavailable');expect(model.calls).toHaveLength(0);
  });
  it('malformed choices are bounded and cannot introduce code, tests, statements or answers',async()=>{

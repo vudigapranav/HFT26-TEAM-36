@@ -11,9 +11,19 @@ const reviewedSeeds = [
     editable: ['app/store.py', 'app/service.py'],
   },
   {
+    tier: 'adept',
+    directory: 'adept_bucket_rollup',
+    editable: ['app/rollup.py', 'app/service.py'],
+  },
+  {
     tier: 'master',
     directory: 'master_session_window',
     editable: ['app/window.py', 'app/report.py'],
+  },
+  {
+    tier: 'master',
+    directory: 'master_error_budget',
+    editable: ['app/prefix.py', 'app/report.py'],
   },
 ] as const;
 
@@ -146,7 +156,7 @@ export async function loadSeedBank(
       throw new Error(`Seed tier mismatch: ${entry.directory}`);
     }
 
-    bank[entry.tier] = [task];
+    (bank[entry.tier] ??= []).push(task);
   }
 
   return bank;
