@@ -2,6 +2,8 @@
 
 Only things merged on `main`, checked at **`main` @ `19df7ff`** (2026-10-31, after PR #46; first written at `7313627`). Every number names the commit it comes from. If a fact isn't here, don't put it on a slide. Ask Pranav first.
 
+> **Update 31 Oct 08:15 IST:** the "not on main yet" line below is stale. On main now: K11 PostgreSQL persistence (#56), K6 bounded family generation with independent-oracle validation (#54 → #60), six reviewed families with arrays-only Adept/Master so every arrays portfolio reaches all three sets (#63). Still **not** done: the frontend (PR #59, verification in progress) and cloud deployment (prepared only; see `docs/deploy/VERCEL_VM_RUNBOOK.md`). Full backend suite on main: 399 passed, 0 skipped (PostgreSQL 16 + real Docker, cloud container).
+
 **Not on main yet, so don't claim it as working:** persistent assessments across a backend restart (K11), live task generation (K6), cloud deployment (R6b) and the frontend. Pitch these as "in progress" or roadmap.
 
 **Now on main (since the last version of this file):** question sets with "Unlock next questions" and the assistant endpoint (K10, PR #42, `5667e0d`), the validation engine (K5, PR #44, `59b7ef9`), the K7 seeds checked on real Docker (R7, `f168c2b`) and one-command local deployment (R6, `00e01b5`).
