@@ -30,10 +30,10 @@ export type DockerRunnerOptions = {
 
 const DEFAULT_IMAGE = 'torquecode-runner-python:dev';
 const HEALTHY_CACHE_MS = 10_000;
-const MAX_LINE_BYTES = 1_048_576;
-const MAX_CALLS = 10_000;
+export const MAX_LINE_BYTES = 1_048_576;
+export const MAX_CALLS = 10_000;
 const GRADER_LIMITS = { memory_mb: 256, pids: 64 };
-const HARNESS_FILES = ['protocol.py', 'worker.py', 'grade.py'];
+export const HARNESS_FILES = ['protocol.py', 'worker.py', 'grade.py'];
 // Candidate-facing messages never carry docker's own text (socket paths, hosts, host paths).
 const SANDBOX_DOWN = 'Sandbox unavailable: the container runtime is not reachable';
 const SANDBOX_START_FAILED = 'Sandbox unavailable: the container could not be started';
@@ -43,9 +43,9 @@ const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/;
 const FORBIDDEN_NAMES = new Set(['conftest.py', 'pytest.ini', 'pyproject.toml', 'setup.cfg', 'tox.ini',
   'sitecustomize.py', 'usercustomize.py', 'pytest.py', 'pluggy.py', 'protocol.py', 'worker.py', 'grade.py']);
 const FORBIDDEN_SEGMENTS = new Set(['__pycache__', '_pytest', 'pytest', 'pluggy']);
-const TRUSTED_INI = '[pytest]\naddopts =\n';
+export const TRUSTED_INI = '[pytest]\naddopts =\n';
 
-const unavailable = (message: string): SeamResult<InternalRunResult> => ({ kind: 'unavailable', code: 'SANDBOX_UNAVAILABLE', message });
+export const unavailable = (message: string): SeamResult<InternalRunResult> => ({ kind: 'unavailable', code: 'SANDBOX_UNAVAILABLE', message });
 
 /** Path is relative, normalized, made of safe segments with one extension. */
 function safePath(path: string): boolean {
@@ -103,7 +103,7 @@ export function validateRequest(input: RunRequest): string | null {
 }
 
 /** Keeps the first `budget` bytes of a stream and drains the rest so the container never blocks on a full pipe. */
-function capped(budget: number) {
+export function capped(budget: number) {
   const chunks: Buffer[] = [];
   let kept = 0;
   return {
@@ -150,7 +150,7 @@ export function candidateModules(files: RunRequest['files']): string[] {
 }
 
 /** Harness sources (trusted, mounted read-only into both containers). Works from src and from dist. */
-async function harnessDir(): Promise<string> {
+export async function harnessDir(): Promise<string> {
   const candidates = [
     process.env.RUNNER_HARNESS_DIR,
     fileURLToPath(new URL('./harness/', import.meta.url)),
@@ -190,7 +190,7 @@ async function writeWorkspace(root: string, input: RunRequest, selected: TestFil
 }
 
 /** Splits a stream into lines; a line over `limit` bytes is reported instead of buffered. */
-function lineReader(limit: number, onLine: (line: string) => void, onOverflow: () => void) {
+export function lineReader(limit: number, onLine: (line: string) => void, onOverflow: () => void) {
   let buffer = Buffer.alloc(0);
   let overflowed = false;
   return (chunk: Buffer) => {
@@ -208,10 +208,10 @@ function lineReader(limit: number, onLine: (line: string) => void, onOverflow: (
   };
 }
 
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+export const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** A worker reply is forwarded only if it is exactly a reply to the pending request. */
-function validWorkerReply(message: unknown, pendingId: number): message is Record<string, unknown> {
+export function validWorkerReply(message: unknown, pendingId: number): message is Record<string, unknown> {
   if (!isObject(message) || message.id !== pendingId || typeof message.ok !== 'boolean') return false;
   if (message.ok) return !('error' in message);
   const error = message.error;
@@ -529,7 +529,7 @@ type RelayOutcome = {
 };
 
 /** The grader's report: per-test status for expected ids only; anything malformed is null. */
-function parseReport(report: Record<string, unknown> | null, expectedIds: string[]) {
+export function parseReport(report: Record<string, unknown> | null, expectedIds: string[]) {
   if (!report || !Array.isArray(report.tests)) return null;
   const expected = new Set(expectedIds);
   const tests = new Map<string, { status: TestResult['status']; duration_ms: number }>();

@@ -14,7 +14,8 @@
     "db:migrate": "node --import tsx api/db/command.ts",
     "gen:smoke": "node --env-file-if-exists=../../.env --import tsx generation/smoke.ts",
     "llm:eval": "node --env-file-if-exists=../../.env --import tsx llm/live-eval.ts",
-    "llm:smoke": "node --env-file-if-exists=../../.env --import tsx llm/smoke.ts"
+    "llm:smoke": "node --env-file-if-exists=../../.env --import tsx llm/smoke.ts",
+    "e2b:template": "node --env-file-if-exists=../../.env --import tsx runner/e2bTemplate.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
@@ -23,6 +24,7 @@
     "@torquecode/contracts": "workspace:*",
     "ajv-formats": "^3.0.1",
     "argon2": "^0.45.1",
+    "e2b": "^2.62.0",
     "fastify": "5.12.7",
     "pg": "^8.23.1",
     "typebox": "1.4.3"

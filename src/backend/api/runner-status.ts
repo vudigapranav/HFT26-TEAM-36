@@ -11,6 +11,8 @@ export function inspectDockerImage(image: string): Promise<boolean> {
 }
 // Call once at application startup. A missing binary/daemon/image degrades health, never prevents startup.
 export async function checkRunner(env: NodeJS.ProcessEnv = process.env, inspect = inspectDockerImage): Promise<RunnerStatus> {
+  // RUNNER=e2b: isolated cloud sandboxes; usable only with an API key (each run then reports its own failures).
+  if (env.RUNNER === 'e2b') return { runner: 'isolated', image: `e2b:${env.E2B_TEMPLATE || 'torquecode-runner-python'}`, available: Boolean(env.E2B_API_KEY) };
   if (env.RUNNER !== 'docker') return { runner: 'immutable_seed_only', available: true };
   const image = env.RUNNER_IMAGE || DEFAULT_RUNNER_IMAGE;
   return { runner: 'isolated', image, available: await inspect(image) };
