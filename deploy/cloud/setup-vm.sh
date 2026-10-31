@@ -89,7 +89,8 @@ systemctl enable --now torquecode-backend
 systemctl restart caddy
 
 say "Local health"
-for _ in $(seq 1 30); do curl -fsS --max-time 3 http://127.0.0.1:3001/health && break; sleep 2; done || die "backend not healthy: journalctl -u torquecode-backend"
+. "$APP/deploy/cloud/health.sh"
+wait_backend_health http://127.0.0.1:3001/health || die "backend not healthy: journalctl -u torquecode-backend"
 echo
 if [ "$PROXY_SECRET_STATE" = existing ]; then
   echo "Proxy secret unchanged (kept from /etc/caddy/torquecode.env). Rotate with ROTATE_PROXY_SECRET=1."

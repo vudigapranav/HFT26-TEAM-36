@@ -448,3 +448,8 @@ Branch `rithvik/r6b-cloud`; only `deploy/cloud/` and status changed. The PR stay
      - `middleware.ts` wasn't type-checked or run on Vercel (`@vercel/functions` isn't a repo dependency; Akshit adds it with the files).
      - Vercel's docs don't explicitly say that middleware-modified request headers reach an **external** rewrite destination; README checklist items 8–9 verify this live.
 4. **Not deployment-ready.** Nothing has run on a VM, Caddy with ACME, systemd, ufw or Vercel. `TRUST_PROXY` (Karthik, K11) is still a blocker.
+
+## 2026-10-31 — R6b maintainer merge review
+- Reviewed and merged only as a prepared deployment kit, per Pranav's request; no VM deployment or public URL verification is claimed.
+- Fixed setup health polling: exhausting all attempts now returns failure rather than inheriting a successful final sleep. Added three command-fixture regressions for immediate success, eventual success and exhausted failure.
+- Local checks: proxy-secret 8 passed, health polling 3 passed, proxy-header 4 passed; setup shell syntax and diff checks passed. Existing Caddy/middleware deployment verification limitations remain documented in deploy/cloud/README.md.

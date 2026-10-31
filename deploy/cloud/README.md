@@ -96,6 +96,8 @@ Recovery: if Docker stops, Runs return 503 (never a grade); `systemctl restart d
 backend fails to start, it's almost always `backend.env` (AUTH_ORIGIN must be https and match Vercel exactly) or
 PostgreSQL being down (`docker compose -f /opt/torquecode/deploy/docker-compose.yml --env-file /opt/torquecode/deploy/.env up -d`).
 
+Local setup-health regression checks: `bash deploy/cloud/test-health.sh` (success, retry, exhausted failure).
+
 ## Verification checklist (only on the real VM + public Vercel URL; record actual results)
 
 1. On the VM: `curl -fsS http://127.0.0.1:3001/health` shows `runner_available:true`; `BACKEND_PORT=3001 deploy/verify.sh --outage` gives 31/31.
