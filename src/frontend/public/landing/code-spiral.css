@@ -2,7 +2,7 @@
 .code-journey .hero-shell{height:175svh}
 .code-journey .hero-stage{min-height:640px}
 .code-journey .hero-composition{justify-content:center;text-align:center;isolation:isolate}
-.code-journey h1{font-size:clamp(95px,10vw,158px);font-weight:500;z-index:4;line-height:.92;letter-spacing:-.075em;text-shadow:0 0 55px var(--paper),0 0 20px var(--paper)}
+.code-journey h1{font-size:clamp(95px,10vw,158px);font-weight:500;z-index:4;line-height:.92;letter-spacing:-.075em;text-shadow:0 1px 0 rgba(255,255,255,.85),0 0 10px rgba(255,255,255,.9),0 0 26px rgba(251,251,253,.75)}
 .code-journey .hero-line{transform:translateY(var(--line-y,0px))!important;opacity:var(--line-opacity,1)}
 .code-journey .hero-spark,.code-journey .sculpture-note,.code-journey .interlude-star{display:none}
 .code-journey .flow-layer{z-index:1}
@@ -28,3 +28,11 @@ body:has(dialog[open]) .code-background{visibility:hidden}
 }
 @media(prefers-reduced-motion:reduce){.code-background{display:none}}
 
+
+/* Intro: the headline rises out of the screen once the lid has opened (laptop.js adds the classes). */
+#hero-title.lid-intro{opacity:0;transform:translateY(46px) scale(.8);filter:blur(10px);transition:opacity .55s cubic-bezier(.22,1,.36,1),transform .65s cubic-bezier(.22,1,.36,1),filter .55s ease}
+#hero-title.lid-intro.lid-intro-done{opacity:1;transform:none;filter:none}
+@media (prefers-reduced-motion:reduce){#hero-title.lid-intro{opacity:1;transform:none;filter:none;transition:none}}
+/* Safety net: if the intro script never runs, the headline still appears. */
+#hero-title.lid-intro:not(.lid-intro-done){animation:heroTitleFallback 0s linear 4s forwards}
+@keyframes heroTitleFallback{to{opacity:1;transform:none;filter:none}}
