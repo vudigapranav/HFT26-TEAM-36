@@ -5,6 +5,7 @@ import type {AssessmentState,CandidateTask,File,RunResult} from '../types';
 import '../monaco-setup';
 import FinishAssessment,{type FinishPhase} from '../components/FinishAssessment';
 import {api,Button,Chips,ErrorNotice,finishDemo,Icon,message,registerLeaveHandler,Skeleton,useApp,type Problem} from '../lib';
+import {failed,POLL_MS,releasable,STAGES} from '../assessment';
 
 type Chat={role:'user'|'assistant';content:string;hint?:number};
 type Activity={task_id:string;client_ts:string;type:'tab_hidden'|'tab_visible'|'copy'|'paste';payload:{size?:number}};
@@ -19,7 +20,7 @@ export default function Workspace(){
  const model=useApp(),modelRef=useRef(model);modelRef.current=model;
  const navigate=useNavigate(),aid=sessionStorage.getItem('torque-assessment-id');
  const [task,setTask]=useState<CandidateTask|null>(null),taskRef=useRef(task);taskRef.current=task;
- const [fileIndex,setFileIndex]=useState(0),[loading,setLoading]=useState(true),[loadError,setLoadError]=useState<unknown>(null);
+ const [fileIndex,setFileIndex]=useState(0),[loading,setLoading]=useState(true),[loadError,setLoadError]=useState<unknown>(null),[preparing,setPreparing]=useState<AssessmentState|null>(null);
  const [working,setWorking]=useState<'run'|'submit'|'unlock'|'finish'|null>(null),workingRef=useRef(false);
  const [finishOpen,setFinishOpen]=useState(new URLSearchParams(window.location.hash.split('?')[1]||'').get('finish')==='1');
  const [saveState,setSaveState]=useState('All changes saved'),[dirty,setDirty]=useState(false),dirtyRef=useRef(false),version=useRef(0),saving=useRef<Promise<void>|null>(null);
@@ -41,10 +42,17 @@ export default function Workspace(){
  }
  async function flush(){if(flushing.current||!events.current.length||!aid)return;flushing.current=true;const batch=events.current.splice(0,100);try{await api('POST',`/assessments/${aid}/events`,{events:batch});}catch{events.current.unshift(...batch);events.current=events.current.slice(-100);}finally{flushing.current=false;}}
  useEffect(()=>{
-  if(!aid){navigate('/ready',{replace:true});return;}let cancelled=false;
+  if(!aid){navigate('/ready',{replace:true});return;}let cancelled=false,timer:ReturnType<typeof setTimeout>|undefined;
   setLoading(true);setLoadError(null);
-  api<AssessmentState>('GET',`/assessments/${aid}/status`).then(async state=>{if(cancelled)return;accept(state);if(state.status==='finished')return;const next=normalize(await api<CandidateTask>('GET',`/assessments/${aid}/tasks/${state.task_id}`));if(!cancelled){setTask(next);setLoading(false);}}).catch(e=>{if(!cancelled){setLoadError(e);setLoading(false);}});
-  return ()=>{cancelled=true;};
+  // G3: questions are fetched only after generation/validation releases them; until then poll every 2 s.
+  const load=async():Promise<void>=>{try{
+   const state=await api<AssessmentState>('GET',`/assessments/${aid}/status`);if(cancelled)return;accept(state);if(state.status==='finished')return;
+   if(failed(state)){setPreparing(null);setLoadError(Object.assign(new Error('Question validation failed.'),{code:'TASK_VALIDATION_FAILED',status:503}));setLoading(false);return;}
+   if(!releasable(state)){setPreparing(state);timer=setTimeout(()=>void load(),POLL_MS);return;}
+   const next=normalize(await api<CandidateTask>('GET',`/assessments/${aid}/tasks/${state.task_id}`));if(!cancelled){setPreparing(null);setTask(next);setLoading(false);}
+  }catch(e){if(cancelled)return;if((e as Problem).code==='ASSESSMENT_GENERATING'){timer=setTimeout(()=>void load(),POLL_MS);return;}setLoadError(e);setLoading(false);}};
+  void load();
+  return ()=>{cancelled=true;if(timer)clearTimeout(timer);};
  },[aid,retry[0]]);
  useEffect(()=>{registerLeaveHandler(save);return()=>registerLeaveHandler(null);},[aid]);
  useEffect(()=>{if(!dirty)return;const timer=setTimeout(()=>void save().catch(()=>{}),1500);return()=>clearTimeout(timer);},[task,dirty]);
@@ -82,7 +90,7 @@ export default function Workspace(){
  async function send(e:FormEvent){e.preventDefault();if(!task||chatBusy||workingRef.current||!chatInput.trim())return;const id=task.task_id,text=chatInput.trim(),history=(chats[id]||[]).filter(c=>!c.hint).slice(-12).map(({role,content})=>({role,content}));append(id,{role:'user',content:text});setChatInput('');setChatBusy(true);try{const answer=await api<{blocked:boolean;reply?:string;reason?:string}>('POST',`/assessments/${aid}/assistant`,{task_id:id,message:text,history});append(id,{role:'assistant',content:answer.blocked?`The assistant can’t help with that. ${answer.reason||'Ask about your reasoning or a specific error.'}`:answer.reply||''});}catch(e){append(id,{role:'assistant',content:message(e)});}finally{setChatBusy(false);}}
  editorActions.current=()=>void execute('run');
  const mountEditor:OnMount=(editor,monaco)=>{editorRef.current=editor;editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS,()=>void save().then(()=>modelRef.current.toast('All changes saved.')).catch(e=>setNotice(e)));editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.Enter,()=>editorActions.current());};
- if(loading)return <Skeleton/>;
+ if(loading)return preparing?.generation?<section className="page" role="status" aria-live="polite"><span className="eyebrow muted">ALMOST THERE</span><h1>Preparing your questions<em>.</em></h1><p className="lede"><span className="spinner"/> {STAGES[preparing.generation.status]}. Your workspace opens as soon as every question is verified.</p></section>:<Skeleton/>;
  if(loadError)return <section className="error-screen"><h1>A small pause.<br/><em>A clear next step.</em></h1><ErrorNotice error={loadError}/><Button onClick={()=>retry[1](n=>n+1)}>Try again <Icon name="refresh"/></Button></section>;
  if(!task||!model.assessment)return null;
  const state=model.assessment,selected=task.files[fileIndex],result=model.results[task.task_id];

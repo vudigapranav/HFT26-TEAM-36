@@ -35,3 +35,17 @@ export function setup(){
  HTMLDialogElement.prototype.close=function(){this.removeAttribute('open')};
 }
 export const user={user_id:'0b6f6d1c-6c1a-4b0e-9a8a-2b1f7c1d9e10',email:'candidate@example.org'};
+
+import type {AssessmentState,CandidateTask} from '../../src/types';
+export const AID='a0b1c2d3';
+export function assessmentState(over:Partial<AssessmentState>={}):AssessmentState{
+ return {assessment_id:AID,report_id:`report-${AID}`,task_id:'question-1',available_task_ids:['question-1'],questions:[{task_id:'question-1',assistant_enabled:false}],
+  unlock_available:false,unlocks_used:0,status:'active',started_at:'2026-10-31T08:00:00.000Z',expires_at:new Date(Date.now()+3_000_000).toISOString(),
+  remaining_sec:3000,policy_todos:[],runner:'isolated',runner_available:true,...over};
+}
+export function candidateTask(id='question-1',over:Partial<CandidateTask>={}):CandidateTask{
+ return {task_id:id,domain:'backend',language:'python',task_type:'bug_fix',title:`Fix the request summary ${id}`,statement_md:'Fix `peak_requests`.',dsa_topics:['arrays'],
+  files:[{path:'app/summary.py',content:'def peak_requests(counts):\n    return 0\n',editable:true},{path:'app/models.py',content:'X = 1\n',editable:false}],
+  visible_tests:[{id:'tests/test_visible.py::test_peak',path:'tests/test_visible.py',content:'def test_peak(): pass\n'}],source:'seed_bank',assistant_enabled:false,...over};
+}
+export const editorMock={default:({value,onChange,options}:{value:string;onChange:(v:string)=>void;options:{readOnly:boolean;ariaLabel:string}})=><textarea aria-label={options.ariaLabel} readOnly={options.readOnly} value={value} onChange={e=>onChange(e.target.value)}/>};
