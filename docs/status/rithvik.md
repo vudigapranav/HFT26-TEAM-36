@@ -525,3 +525,15 @@ Branch `rithvik/r6b-cloud`; only `deploy/cloud/` and status changed. The PR stay
 - Reviewed and merged only as a prepared deployment kit, per Pranav's request; no VM deployment or public URL verification is claimed.
 - Fixed setup health polling: exhausting all attempts now returns failure rather than inheriting a successful final sleep. Added three command-fixture regressions for immediate success, eventual success and exhausted failure.
 - Local checks: proxy-secret 8 passed, health polling 3 passed, proxy-header 4 passed; setup shell syntax and diff checks passed. Existing Caddy/middleware deployment verification limitations remain documented in deploy/cloud/README.md.
+
+## 2026-10-31 — Windows-safe backend build (branch `rithvik/windows-build`)
+- **Failing condition:** `pnpm build` failed on Windows after `tsc` with "The syntax of the command is incorrect." The build script used `mkdir -p` and `cp` globs, which cmd.exe doesn't support.
+- **Fix:** `src/backend/tools/copy-build-assets.mjs` copies the top-level `api/db/migrations/*.sql`, `intake/*.json` and `tools/*.py` into `dist/`, using `fs.mkdirSync(recursive)` + `fs.cpSync`. The build script is now `tsc -p tsconfig.json && node tools/copy-build-assets.mjs`.
+- **Tests:**
+  - `vitest run tests/build`: 4/4 (exact file set copied, non-matching and nested files skipped, idempotent rebuild, CLI entry from the package root, no POSIX-only commands in the build script).
+  - `tsc --noEmit` OK.
+  - Full `pnpm build` on Windows: exit 0, 7 assets copied.
+- **Not done:**
+  - The PostgreSQL harness, `scripts/test-auth.mjs`, is Pranav/Karthik's (`scripts/*`); the hook blocks it from this branch. It needs `os.tmpdir()` instead of `'/tmp'` and a Windows-safe `pnpm` spawn.
+  - R6b VM deploy is blocked: no VM host or SSH access has been provided.
+  - My earlier local K6-wiring commit is superseded by #60 and was dropped.
