@@ -1,5 +1,5 @@
 import {useEffect,useState,type CSSProperties} from 'react';
-import {Link} from 'react-router-dom';
+import {Link,useSearchParams} from 'react-router-dom';
 import type {AieScore,Report as AssessmentReport} from '../types';
 import {api,Button,ErrorNotice,Icon,Skeleton,useApp} from '../lib';
 import '../report-react.css';
@@ -31,8 +31,12 @@ function Efficiency({aie}:{aie:AieScore}){
   ] as [string,number][]).map(([label,value])=><div className="metric-row" key={label}><span>{label}</span><div className="metric-bar" role="img" aria-label={`${label}: ${percent(value)} percent`}><span style={{width:`${percent(value)}%`}}/></div><strong aria-hidden="true">{percent(value)}%</strong></div>)}<p className="small muted">Correctness gate: {percent(aie.gate)}%. Values come from the assessment backend.</p></div>;
 }
 
+type ClaimState='demonstrated'|'not_demonstrated'|'not_tested';
+const claimState=(d:boolean|null):ClaimState=>d===null?'not_tested':d?'demonstrated':'not_demonstrated';
+const CLAIM_LABEL:Record<ClaimState,string>={demonstrated:'Demonstrated',not_demonstrated:'Not demonstrated',not_tested:'Not tested'};
+
 export default function Report(){
-  const {mode,toast}=useApp();
+  const {mode,toast}=useApp(),[params]=useSearchParams(),requested=params.get('id');
   const [report,setReport]=useState<AssessmentReport|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<unknown>(null);
@@ -40,13 +44,13 @@ export default function Report(){
   useEffect(()=>{
     let current=true;
     setLoading(true);setError(null);setReport(null);
-    const reportId=sessionStorage.getItem('torque-report-id')||(__DEMO_BUILD__&&mode==='demo'?'sample':null);
+    const reportId=requested||sessionStorage.getItem('torque-report-id')||(__DEMO_BUILD__&&mode==='demo'?'sample':null);
     if(!reportId){setError(new Error('No assessment report is available in this session. Complete an assessment to view its evidence.'));setLoading(false);return;}
     api<AssessmentReport>('GET',`/reports/${encodeURIComponent(reportId)}`).then(result=>{
       if(current)setReport(result);
     }).catch(problem=>{if(current)setError(problem);}).finally(()=>{if(current)setLoading(false);});
     return()=>{current=false;};
-  },[attempt,mode]);
+  },[attempt,mode,requested]);
 
   if(loading)return <Skeleton/>;
   if(error||!report)return <section className="page report-error-page"><span className="eyebrow orange">THE EVIDENCE IS WORTH A SECOND LOOK</span><h1>Your report,<br/><em>when it’s ready.</em></h1><ErrorNotice error={error||new Error('This report is not available yet.')}/><div className="button-row"><Button onClick={()=>setAttempt(value=>value+1)}>Try again <Icon name="refresh"/></Button><Link className="pill outline" to="/portfolio">Back to portfolio <Icon name="back"/></Link></div></section>;
@@ -72,7 +76,7 @@ export default function Report(){
     </div>
 
     <div className="report-grid report-overview-grid">
-      <section className="panel reveal" style={stagger(140)} aria-labelledby="question-summary"><h2 id="question-summary">QUESTION SUMMARY</h2>{report.tasks.length?<div className="report-table-scroll"><table className="result-table"><caption className="report-sr-only">Tests passed, time spent, and hints used for each question.</caption><thead><tr><th scope="col">QUESTION</th><th scope="col">TESTS</th><th scope="col">TIME</th><th scope="col">HINTS</th></tr></thead><tbody>{report.tasks.map((task,index)=><tr key={task.task_id}><th scope="row">Question {index+1}</th><td><span>{task.passed} / {task.total}</span><span className="mini-bar" aria-hidden="true"><i style={{width:`${task.total?percent(task.passed/task.total):0}%`}}/></span></td><td>{minutes(task.time_sec)}</td><td>{task.hints_used}</td></tr>)}</tbody></table></div>:<p className="small muted">No question evidence is included in this report.</p>}<p className="report-section-note">Results are shown as supplied by the assessment backend.</p></section>
+      <section className="panel reveal" style={stagger(140)} aria-labelledby="question-summary"><h2 id="question-summary">QUESTION SUMMARY</h2>{report.tasks.length?<div className="report-table-scroll"><table className="result-table"><caption className="report-sr-only">Tests passed, time spent, and hints used for each question.</caption><thead><tr><th scope="col">QUESTION</th><th scope="col">TESTS</th><th scope="col">TIME</th><th scope="col">HINTS</th></tr></thead><tbody>{report.tasks.map((task,index)=><tr key={task.task_id}><th scope="row">Question {index+1}<small className="report-task-id">{task.task_id}</small></th><td><span>{task.passed} / {task.total} · {task.total?percent(task.passed/task.total):0}%</span><span className="mini-bar" aria-hidden="true"><i style={{width:`${task.total?percent(task.passed/task.total):0}%`}}/></span></td><td>{minutes(task.time_sec)}</td><td>{task.hints_used}</td></tr>)}</tbody></table></div>:<p className="small muted">No question evidence is included in this report.</p>}<p className="report-section-note">Results are shown as supplied by the assessment backend.</p></section>
       <section className="panel report-focus-panel reveal" style={stagger(190)} aria-labelledby="focus-heading"><h2 id="focus-heading">WHERE TO GO NEXT</h2><h3>A little more <em>focus.</em></h3><ol className="focus-areas">{report.focus_areas.map((area,index)=><li key={`${index}-${area}`}><span>{String(index+1).padStart(2,'0')}</span>{area}</li>)}</ol>{!report.focus_areas.length&&<p className="small muted">No additional focus areas were returned for this report.</p>}</section>
     </div>
 
@@ -83,9 +87,10 @@ export default function Report(){
       {task.aie?<details className="efficiency-details"><summary>Assistance evidence <span aria-hidden="true">+</span></summary><Efficiency aie={task.aie}/></details>:<p className="question-no-aie">No AI-efficiency evidence for this question.</p>}
     </article>)}</div></section>
 
+    {report.claims&&<section className="panel reveal report-claims" style={stagger(250)} aria-labelledby="claims-heading"><span className="eyebrow muted">WHAT YOU CLAIMED, WHAT YOU SHOWED</span><h2 id="claims-heading">Claims vs <em>demonstrated.</em></h2>{report.claims.length?<div className="report-table-scroll"><table className="result-table"><caption className="report-sr-only">Each claimed DSA topic and whether this assessment demonstrated it.</caption><thead><tr><th scope="col">TOPIC</th><th scope="col">RESULT</th><th scope="col">TESTED BY</th></tr></thead><tbody>{report.claims.map(c=><tr key={c.topic} data-claim={claimState(c.demonstrated)}><th scope="row">{c.topic.replaceAll('_',' ')}</th><td>{CLAIM_LABEL[claimState(c.demonstrated)]}</td><td>{c.tested_by??'—'}</td></tr>)}</tbody></table></div>:<p className="small muted">No claimed topics are listed in this report.</p>}<p className="report-section-note">“Not tested” means no attempted question in this session covered the topic.</p></section>}
     <section className="report-integrity panel reveal" style={stagger(270)} aria-labelledby="integrity-heading"><div><span className="eyebrow muted">CONTEXT, NOT CONCLUSIONS</span><h2 id="integrity-heading">Integrity <em>signals.</em></h2></div><div className="integrity-content"><div className="integrity-items">{report.integrity_signals.map((signal,index)=><span className="chip" key={`${signal.type}-${index}`}>{signal.type.replaceAll('_',' ')}<strong>{signal.count}</strong></span>)}{!report.integrity_signals.length&&<span className="small muted">No signals recorded.</span>}</div><p className="small muted">Signals for review, not automatic verdicts.</p></div></section>
 
-    <div className="report-actions reveal" style={stagger(300)}><p className="small muted">Your next step starts with what you learned.</p><div className="button-row"><Button className="outline" onClick={printReport}>Save as PDF <Icon name="download"/></Button><Link className="pill" to="/portfolio">Back to portfolio <Icon name="arrow"/></Link></div></div>
+    <div className="report-actions reveal" style={stagger(300)}><p className="small muted">Your next step starts with what you learned.</p><div className="button-row"><Button className="outline" onClick={printReport}>Save as PDF <Icon name="download"/></Button><Link className="pill outline" to="/reports">Past reports <Icon name="chart"/></Link><Link className="pill" to="/portfolio">Back to portfolio <Icon name="arrow"/></Link></div></div>
     <p className="report-bottom-note">{(__DEMO_BUILD__&&mode==='demo')?'DESIGN PREVIEW / SAMPLE DATA · This illustrative report is independent of your current preview edits and submissions.':'All grades and AI-efficiency values are supplied by the backend. Integrity activity is recorded only in the coding workspace.'}</p>
   </section>;
 }
