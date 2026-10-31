@@ -210,3 +210,10 @@ Newest entries at the bottom. Written by `/ship`.
   - #58's BACKEND_DECISIONS K8 section has 3 claims superseded by #60.
   - Exact change list posted: https://github.com/vudigapranav/HFT26-TEAM-36/pull/58#issuecomment-6537402894
 - Next: Karthik rebases #58 onto main (with #60) and re-runs test:auth with 0 skips; then P13/claims check if still needed.
+
+## 2026-10-31 08:15 — deployment runbook, submission prep, PR #58 review (branch `pranav/deploy-submission-prep`)
+- Added `docs/deploy/VERCEL_VM_RUNBOOK.md`: architecture, the missing real values (VM, BACKEND_HOST, Vercel URL, secrets), where each env var lives, Vercel project settings checked against vercel.com/docs (rewrites, monorepos), a **template** `vercel.json` (not committed as active config: no backend host exists yet), deploy order, verification and rollback. It reuses Rithvik's R6b kit and middleware; nothing is deployed.
+- Added `docs/demo/submission.md` (track, demo URL and unfinished checks marked UNKNOWN) and `docs/demo/DEMO_CHECKLIST.md`.
+- README and PITCH_FACTS: corrected stale lines (six families from `generation/families.ts`; K11, K6/#60 and #63 on main; frontend and deployment still not done).
+- `docs/reviews/2026-10-31-pr58-review.md`: #58's wiring.ts is identical to main; the remaining incompatibilities are listed. No comment was posted on #58, and nothing was merged.
+- Checks: the template JSON parses; `node --test deploy/cloud/vercel/torquecode-proxy-headers.test.mjs` passes; ownership check below. No deployment, browser or provider checks were run.
