@@ -1,6 +1,16 @@
-# TorqueCode backend — K1 + K2 authentication
+# TorqueCode backend
 
 Read `docs/BACKEND_DECISIONS.md` from repository root for the agreed stack, ownership, contracts and open policies. `docs/status/karthik.md` records progress and test evidence.
+
+## Current persistence — K11
+
+Auth mode uses `api/postgres-assessment-store.ts`; apply `pnpm db:migrate` to the dedicated PostgreSQL database before startup (migrations 001 and 002). Profiles, quiz focus, assessment files/results/events, deadlines, generation jobs and reports survive backend restarts. The map-shaped adapter in `api/assessment-store.ts` is for unit tests; production working copies live only inside database transactions.
+
+Generation is a durable background job with bounded generation/validation and reviewed seed fallback. Startup recovers pending jobs and expired sessions; expiration effects commit once, although a crash before commit can repeat external runner work. Hints and guarded assistant responses are delivered only after their usage events commit; persistence failure returns 503.
+
+`GET /reports` returns up to 100 owned completed reports and an optional `next_cursor`; request `GET /reports?before=<next_cursor>` for older pages. `GET /reports/:id` preserves active snapshots and stored final reports. `TRUST_PROXY=false` is the default; enable it only behind the trusted proxy to use the first forwarded IP for rate limits. `pnpm test:persistence` uses a fresh isolated native PostgreSQL cluster, or a dedicated ephemeral Docker PostgreSQL container if native startup is unavailable; it ignores inherited DATABASE_URL. Set TORQUECODE_REQUIRE_DB=1 to require real database execution.
+
+The checkpoint sections below describe earlier milestones. Current persistence behavior above and `docs/BACKEND_DECISIONS.md` supersede their original process-local limitations.
 
 From repository root:
 
@@ -65,7 +75,7 @@ K2 adds no portfolio/assessment/runner integration, email verification, password
 
 ## Seed checkpoint API — K3 + K4-lite
 
-With APP_MODE=auth, the server also exposes the assessment API. Authentication is required: register, then log in and keep the cookie. Auth data is in PostgreSQL; assessment state is in memory and resets on restart.
+With APP_MODE=auth, the server also exposes the assessment API. Authentication is required: register, then log in and keep the cookie. Auth and assessment state are in PostgreSQL and survive restart; see the current K11 section above.
 
 Akshit’s frontend setup: proxy `/api` to `http://127.0.0.1:3001`, strip the `/api` prefix, and preserve the browser’s Origin. Call relative URLs such as `/api/auth/login`. Set backend AUTH_ORIGIN to the exact frontend origin, e.g. `http://localhost:5173`. Use the same hostname consistently; no CORS is required. HttpOnly + SameSite=Lax cookies are handled by the browser.
 
@@ -87,7 +97,7 @@ Upload before quiz/assessment. The current seed requires arrays in the normalize
 
 **Runner limitation:** local mode runs only exact reviewed seed starter/reference fixtures. Arbitrary candidate edits return 503 SANDBOX_UNAVAILABLE. They may be autosaved, but need Rithvik’s isolated runner to execute. The API never substitutes passing results. On the server’s 60-minute deadline it attempts auto-submit once; unavailable execution is visible as auto_submit_error in status. Hidden contents and submit logs never reach the client.
 
-`api/wiring.ts` is the single replacement point for Rithvik’s merged runner. `api/assessment-store.ts` is the process-local store; it bounds profiles/assessments, events, runs and concurrent execution. A restart loses assessments/reports, not auth records. GET report before expiry is a snapshot; the status endpoint identifies completion.
+`api/wiring.ts` is the single replacement point for Rithvik’s merged runner. `api/postgres-assessment-store.ts` is the production store; SQL enforces active-assessment and run-rate limits, while event/assistant quotas remain. A restart preserves assessments and reports. GET report before expiry is a snapshot; the status endpoint identifies completion.
 
 ### Demo PostgreSQL preparation
 

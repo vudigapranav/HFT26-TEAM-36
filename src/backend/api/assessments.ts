@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { TIER_ORDER, allQuestionsSubmitted, nextTier } from './tier-policy.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { Type } from 'typebox';
-import { ApiError, AssessmentState, AssistantResponse, CandidateTask, EventsRequest, FocusLaneResponse, HintResponse, PortfolioResponse, QuizAnswers, QuizResponse, Report, RunFilesRequest, RunResult, TaskFilesRequest } from '@torquecode/contracts';
+import { Id, ApiError, AssessmentState, AssistantResponse, CandidateTask, EventsRequest, FocusLaneResponse, HintResponse, PortfolioResponse, QuizAnswers, QuizResponse, Report, ReportHistory, RunFilesRequest, RunResult, TaskFilesRequest } from '@torquecode/contracts';
 import type { File, Tier } from '@torquecode/contracts';
 import type { Event, InternalRunResult, PrivateTask, SeamResult } from '../contracts/internal.js';
 import type { Ports } from '../contracts/seams.js';
@@ -19,7 +19,7 @@ export type AssessmentOptions = {
   store: AssessmentStore; seed: PrivateTask; origin: string;
   seed_bank?: Partial<Record<Tier, PrivateTask[]>>;
   authenticate: (request: FastifyRequest) => Promise<string | undefined>;
-  now?: () => number; runner?: 'immutable_seed_only' | 'isolated'; runner_status?: RunnerStatus;
+  generation_timeout_ms?: number; now?: () => number; runner?: 'immutable_seed_only' | 'isolated'; runner_status?: RunnerStatus;
 };
 const empty = Type.Object({}, { additionalProperties: false });
 const ok = Type.Object({ ok: Type.Literal(true) }, { additionalProperties: false });
@@ -27,6 +27,17 @@ const errors = { 400: ApiError, 401: ApiError, 403: ApiError, 404: ApiError, 409
 function real<T>(result: SeamResult<T>): T {
   if (result.kind !== 'ok') throw new HttpProblem(503, result.kind === 'unavailable' ? result.code : 'FIXTURE_UNAVAILABLE');
   return result.value;
+}
+
+// Bound every external stage even when an adapter fails to honour AbortSignal.
+function bounded<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const aborted = () => reject(new Error('Operation cancelled'));
+    signal.addEventListener('abort', aborted, { once: true });
+    if (signal.aborted) aborted();
+    work.then(value => { signal.removeEventListener('abort', aborted); resolve(value); },
+      error => { signal.removeEventListener('abort', aborted); reject(error); });
+  });
 }
 
 export async function registerAssessments(app: FastifyInstance, ports: Ports, options: AssessmentOptions) {
@@ -41,6 +52,16 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     const user = await options.authenticate(request);
     if (!user) throw new HttpProblem(401, 'UNAUTHENTICATED');
     identities.set(request, user);
+  });
+  app.addHook('onRoute', route => {
+    const handler = route.handler;
+    route.handler = async function(request, reply) {
+      const params = request.params as { id?: string };
+      const rawId = params?.id;
+      const id = rawId?.startsWith('report-') ? rawId.slice(7) : rawId;
+      return store.withUser(identities.get(request)!, id,
+        async () => handler.call(this, request, reply), request.routeOptions.url === '/assessments');
+    };
   });
   const user = (request: FastifyRequest) => identities.get(request)!;
   const emit = (record: AssessmentRecord, type: Event['type'], payload: Event['payload'], ts = now(), source: Event['source'] = 'server', taskId = record.task.task_id) => {
@@ -60,6 +81,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   };
 
   const taskWork = (record: AssessmentRecord, id: string): TierWork => {
+    if (record.generation && record.generation.status !== 'ready') throw new HttpProblem(409, 'ASSESSMENT_GENERATING');
     for (const tier of TIER_ORDER) {
       const work = works(record, tier).find(w => w.task.task_id === id || publicId(record, w.task.task_id) === id);
       if (!work) continue;
@@ -101,10 +123,10 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       return { path: expected.path, content: supplied.content, editable: true };
     });
   }
-  async function execute(record: AssessmentRecord, work: TierWork, mode: 'run' | 'submit', ts = now()): Promise<InternalRunResult> {
+  async function execute(record: AssessmentRecord, work: TierWork, mode: 'run' | 'submit', ts = now(), automatic = false): Promise<InternalRunResult> {
     if (record.operation) throw new HttpProblem(409, 'EXECUTION_IN_PROGRESS');
     if (executions >= 2) throw new HttpProblem(429, 'RUNNER_BUSY');
-    if (record.runs.length >= 100) throw new HttpProblem(429, 'RUN_LIMIT');
+    if (!automatic) await store.enforceRunRate(record);
     const files = structuredClone(work.files);
     const files_hash = hashEditableFiles(files);
     executions++;
@@ -159,8 +181,8 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     finally { delete record.operation; executions--; }
   }
   async function expire(record: AssessmentRecord): Promise<void> {
-    if (now() < Date.parse(record.session.expires_at)) return;
     if (record.expiry) return record.expiry;
+    if (now() < Date.parse(record.session.expires_at)) return;
     record.session.status = 'finished';
     const expiry = (async () => {
       try {
@@ -171,7 +193,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
           for (const work of works(record, tier)) {
             try {
               await execute(record, work, 'submit',
-                Date.parse(record.session.expires_at));
+                Date.parse(record.session.expires_at), true);
             } catch (error) {
               record.auto_submit_error ??= error instanceof HttpProblem
                 ? error.code : 'AUTO_SUBMIT_FAILED';
@@ -180,17 +202,109 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
         }
       } catch (error) { record.auto_submit_error = error instanceof HttpProblem ? error.code : 'AUTO_SUBMIT_FAILED'; }
       emit(record, 'session_end', { reason: 'expired', ...(record.auto_submit_error ? { auto_submit_error: record.auto_submit_error } : {}) }, Date.parse(record.session.expires_at));
+      store.saveReport(record.session.id, buildReport(record));
     })();
     record.expiry = expiry;
     return expiry;
   }
-  const timer = setInterval(() => {
-    for (const record of store.assessments.values()) if (!record.expiry && now() >= Date.parse(record.session.expires_at)) void expire(record);
-  }, 1000);
+  let generationFlight: Promise<void> | undefined;
+  async function generatePending() {
+    for (const pending of await store.pendingGenerations()) {
+      if (closing.signal.aborted) return;
+      await store.withGenerationClaim(pending.id, async () => {
+        let profile: import('../contracts/internal.js').CandidateProfile | undefined;
+        let focus: import('../contracts/internal.js').FocusLane | undefined;
+        await store.withUser(pending.user_id, pending.id, async () => {
+          const record = store.assessments.get(pending.id);
+          if (!record?.generation || record.generation.status === 'ready') return;
+          profile = record.profile_snapshot ?? store.profiles.get(pending.user_id)?.profile;
+          focus = record.focus_snapshot;
+          record.generation.status = 'generating';
+        });
+        if (!profile) return;
+        const signal = AbortSignal.any([closing.signal, AbortSignal.timeout(options.generation_timeout_ms ?? 120_000)]);
+        let generated: { tasks: import('../contracts/internal.js').PrivateTask[]; receipts: import('../contracts/internal.js').Gate[] } | undefined;
+        let progressWrites = Promise.resolve();
+        let progressCount = 0;
+        let progressError: unknown;
+        let acceptingProgress = true;
+        const progress = (event: import('../contracts/internal.js').GenerationProgress) => {
+          if (!acceptingProgress || signal.aborted || !['generating','validating'].includes(event.status) || ++progressCount>30) return;
+          const status = event.status as 'generating'|'validating';
+          progressWrites = progressWrites.then(async () => {
+            await store.withUser(pending.user_id,pending.id,async () => {
+              const record=store.assessments.get(pending.id);
+              if (record?.generation && !['ready','failed'].includes(record.generation.status)) { record.generation.status=status; record.generation.progress={status}; }
+            });
+          }).catch(error => { progressError = error; });
+        };
+        try {
+          const result = await bounded(ports.generateAssessment({ profile, focus_lane: focus ?? { domain: profile.domain, skills: profile.skills, topics: profile.claimed_topics }, progress }, { signal }), signal);
+          if (result.kind === 'ok') {
+            const tasks = TIER_ORDER.map(t => result.value[t]);
+            const receipts: import('../contracts/internal.js').Gate[] = [];
+            for (const [i,task] of tasks.entries()) {
+              if (task.tier !== TIER_ORDER[i]) throw new Error('Generation tier mismatch');
+              const checked = await bounded(ports.validateTask({ task, claimed_topics: profile.claimed_topics }, { signal }), signal);
+              if (checked.kind !== 'ok' || !checked.value.valid) throw new Error('Generation validation failed');
+              if (!checked.value.gates.length || checked.value.gates.some(g=>g.status!=='pass')) throw new Error('Incomplete validation receipt');
+              receipts.push(...checked.value.gates);
+            }
+            if (new Set(tasks.map(t=>t.task_id)).size !== tasks.length) throw new Error('Duplicate generated tasks');
+            generated = { tasks, receipts };
+          }
+        } catch { /* An incomplete or unavailable generation always keeps reviewed seed fallback. */ }
+        finally { acceptingProgress = false; }
+        await progressWrites;
+        if (progressError) throw progressError;
+        if (closing.signal.aborted) return; // Recover the generating job on the next startup.
+        await store.withUser(pending.user_id, pending.id, async () => {
+          const record = store.assessments.get(pending.id);
+          if (!record?.generation) return;
+          const adopted = !!generated && record.session.status === 'active' && now()<Date.parse(record.session.expires_at);
+          if (generated && record.session.status === 'active' && now()<Date.parse(record.session.expires_at)) {
+            record.question_sets = {};
+            record.tier_work = {};
+            for (const task of generated.tasks) {
+              const work = { task: structuredClone(task), files: structuredClone(task.files), hint_level: 0 };
+              record.question_sets[task.tier] = [work]; record.tier_work[task.tier] = work;
+            }
+            const first = record.question_sets.novice![0]!;
+            record.task = first.task; record.files = first.files;
+          }
+          record.generation = { status: 'ready', source: adopted && generated!.tasks.some(task => task.source === 'generated') ? 'generated' : 'seed_bank',
+            progress: {}, receipts: (adopted ? generated?.receipts : undefined)?.map(g => ({ gate: g.gate, status: g.status, reason: g.reason.slice(0,300) })) ?? [] };
+        });
+      });
+    }
+  }
+  let recoveryFlight: Promise<void> | undefined;
+  let sweeping = false;
+  const recover = async () => {
+    if (sweeping || closing.signal.aborted) return;
+    sweeping = true;
+    try {
+      if (store.durable) {
+        for (const pending of await store.pendingExpirations()) {
+          await store.withUser(pending.user_id, pending.id, async () => {
+            const record = store.assessments.get(pending.id);
+            if (record) await expire(record);
+          });
+        }
+      } else {
+        for (const record of store.assessments.values()) if (!record.expiry && now() >= Date.parse(record.session.expires_at)) await expire(record);
+      }
+    } catch { app.log.error('Assessment recovery unavailable'); }
+    finally { sweeping = false; }
+  };
+  const timer = setInterval(() => { if (!recoveryFlight) recoveryFlight = recover().finally(() => { recoveryFlight = undefined; }); if (store.durable && !generationFlight) generationFlight = generatePending().catch(() => { app.log.error('Generation recovery unavailable'); }).finally(() => { generationFlight = undefined; }); }, 1000);
   timer.unref();
+  app.addHook('onReady', async () => { await recover(); if (store.durable) generationFlight = generatePending().catch(() => { app.log.error('Generation recovery unavailable'); }).finally(() => { generationFlight = undefined; }); });
   app.addHook('onClose', async () => {
     clearInterval(timer); closing.abort();
-    await Promise.allSettled([...store.assessments.values()].flatMap(r => [r.operation, r.expiry].filter(p => p !== undefined)));
+    await generationFlight;
+    await recoveryFlight;
+    if (!store.durable) await Promise.allSettled([...store.assessments.values()].flatMap(r => [r.operation, r.expiry].filter(p => p !== undefined)));
   });
   async function owned(request: FastifyRequest, task = false) {
     const params = request.params as { id: string; taskId?: string };
@@ -201,6 +315,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   }
   const active = (record: AssessmentRecord) => {
     if (record.session.status !== 'active' || now() >= Date.parse(record.session.expires_at)) throw new HttpProblem(409, 'ASSESSMENT_FINISHED');
+    if (record.generation && record.generation.status !== 'ready') throw new HttpProblem(409, 'ASSESSMENT_GENERATING');
     if (record.operation) throw new HttpProblem(409, 'EXECUTION_IN_PROGRESS');
     if (record.events.length >= 900) throw new HttpProblem(429, 'EVENT_LIMIT');
   };
@@ -223,6 +338,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       questions,
       unlock_available: canUnlock(record),
       unlocks_used: TIER_ORDER.indexOf(record.session.current_tier),
+      ...(record.generation ? { generation: record.generation } : {}),
       status: record.session.status,
       started_at: record.session.started_at,
       expires_at: record.session.expires_at,
@@ -240,7 +356,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     const parsed = parsePortfolioDetailed(request.body);
     if ('errors' in parsed) return reply.code(422).send({ error: { code: 'INVALID_PORTFOLIO', message: 'Invalid portfolio', request_id: request.id, fields: parsed.errors } });
     if (!store.profiles.has(user(request)) && store.profiles.size >= store.max_profiles) throw new HttpProblem(429, 'STORE_CAPACITY');
-    store.profiles.set(user(request), { profile: structuredClone(parsed.profile) });
+    store.profiles.set(user(request), { profile: structuredClone(parsed.profile), portfolio: request.body, reuploaded: true });
     return { profile: parsed.profile, warnings: parsed.warnings, injection_flags: parsed.injection_flags };
   });
   const profileFor = (request: FastifyRequest) => {
@@ -320,8 +436,10 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       record.tier_work![tier] = record.question_sets[tier]![0]!;
     }
 
+    if (store.durable) { record.generation = { status: 'queued', progress: {}, receipts: [] }; record.profile_snapshot = structuredClone(stored.profile); record.focus_snapshot = structuredClone(stored.focus_lane ?? { domain: stored.profile.domain, skills: stored.profile.skills, topics: stored.profile.claimed_topics }); }
     store.assessments.set(record.session.id, record);
-    return reply.code(201).send(state(record));
+    reply.code(201);
+    return state(record);
   });
   app.get('/assessments/:id/status', { schema: { response: { 200: AssessmentState, ...errors } } }, async request => state(await owned(request)));
   app.post('/assessments/:id/tier/upgrade', {
@@ -520,17 +638,23 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
         now(), 'client', event.task_id);
     return { ok: true };
   });
+  function buildReport(record: AssessmentRecord) {
+    const tasks = TIER_ORDER.flatMap(tier => works(record, tier).map(w => w.task));
+    for (const task of tasks) if (task.tier !== 'novice') real(ports.calculateAie({ events: record.events, runs: record.runs, task }));
+    return real(ports.buildReport({ session: record.session, tasks, runs: record.runs, events: record.events, profile: record.profile_snapshot ?? store.profiles.get(record.session.user_id)?.profile }));
+  }
+  app.get<{Querystring:{before?:string}}>('/reports', { schema: { querystring:Type.Object({before:Type.Optional(Id)},{additionalProperties:false}), response: { 200: ReportHistory, ...errors } } }, async request => {
+    const rows=await store.reportHistory(request.query.before);
+    return {reports:rows.slice(0,100),...(rows.length>100?{next_cursor:rows[99]!.id}:{})};
+  });
   app.get('/reports/:id', { schema: { response: { 200: Report, ...errors } } }, async request => {
     const reportId = (request.params as { id: string }).id;
     const record = reportId.startsWith('report-') ? store.assessments.get(reportId.slice(7)) : undefined;
     if (!record || record.session.user_id !== user(request)) throw new HttpProblem(404, 'NOT_FOUND');
     await expire(record);
-    // calculateAie is wired independently for later tiers; Novice remains the report owner's TODO(OPEN-Q4).
-    const tasks = TIER_ORDER
-      .filter(tier => TIER_ORDER.indexOf(tier) <=
-        TIER_ORDER.indexOf(record.session.current_tier))
-      .flatMap(tier => works(record, tier).map(w => w.task));
-    for (const task of tasks) if (task.tier !== 'novice') real(ports.calculateAie({ events: record.events, runs: record.runs, task }));
-    return real(ports.buildReport({ session: record.session, tasks, runs: record.runs, events: record.events, profile: record.profile_snapshot ?? store.profiles.get(user(request))?.profile }));
+    const saved = record.session.status === 'finished' ? await store.readReport(reportId) : undefined;
+    const report = saved ?? buildReport(record);
+    store.saveReport(record.session.id, report);
+    return report;
   });
 }
