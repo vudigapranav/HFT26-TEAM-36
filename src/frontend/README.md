@@ -10,7 +10,7 @@ From the repo root run `pnpm install --frozen-lockfile --ignore-scripts`, then `
 
 - Story/landing: http://127.0.0.1:4177/landing/
 - React app: http://127.0.0.1:4177/#/login
-- All 11 generated designs: http://127.0.0.1:4177/designs.html
+- Design mockups that are in the repo (3 of the original 11): http://127.0.0.1:4177/designs.html
 
 Use **Try the complete preview** to explore without a backend. The footer settings switch modes and reset the sample session. Submit each question to reveal the next unlock; assistance appears only where enabled. **Finish assessment** opens a preview-only confirmation, saves and submits all available questions, closes the sample session, and offers **View sample report**. Try the complete visual flow at http://127.0.0.1:4177/#/finish-preview. Connected backend mode is unchanged because the real API has no early-finish endpoint.
 
@@ -36,7 +36,7 @@ All values in demo mode are sample fixtures, not grades of edited code. Python i
 - `src/frontend/src/api.mjs`, `demo-data.mjs`: explicit preview simulator and real fetch adapter/public fixtures.
 - `src/frontend/src/*css`: design tokens, onboarding/report styling, restrained motion, responsive and reduced-motion states.
 - `src/frontend/public/landing/`: original canvas laptop/code journey, slowed module cards, and app entry links.
-- `src/frontend/public/designs/`: all eleven generated PNG mockups.
+- `src/frontend/public/designs/`: the three PNG mockups that were included (02, 03, 04); the other eight were not in the import.
 - `src/frontend/vite.config.ts`, `tsconfig.json`, `package.json`, `package-lock.json`: project configuration.
 
 No deployment host was supplied, so no production API rewrite or Vercel deployment is fabricated. Configure hosting against the actual backend host before publishing. The current scope is a local frontend preview.

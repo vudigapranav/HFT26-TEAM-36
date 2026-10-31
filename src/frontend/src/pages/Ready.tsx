@@ -30,7 +30,7 @@ export default function Ready(){const {focus,user,setAssessment}=useApp(),naviga
   <ErrorNotice error={error}/>
   <div className="button-row" style={{marginTop:28}}>{active&&stored?<Button onClick={()=>void resume()} busy={busy}>Resume assessment<Icon/></Button>:<Button onClick={()=>void start()} busy={busy} disabled={!!gen&&!failed(state!)}>{busy?(gen?STAGES[gen.status]:'Starting your assessment'):'Start 60-minute assessment'}<Icon/></Button>}<Button className="outline" disabled={busy} onClick={()=>navigate('/portfolio')}>Review portfolio</Button></div>
   {!active&&stored&&!busy&&<button className="text-button" style={{marginTop:20}} onClick={()=>void resume()}>Resume existing assessment ↗</button>}
-  <figure className="ready-art"><img src="/designs/07-coding-workspace.png" alt="TorqueCode coding workspace design preview"/><figcaption>YOUR NEXT WORKSPACE / INTERFACE PREVIEW</figcaption></figure></div></div></section>}
+  <figure className="ready-art"><img src="/landing/assets/assessment.svg" alt="TorqueCode coding workspace illustration"/><figcaption>YOUR NEXT WORKSPACE</figcaption></figure></div></div></section>}
 
 function Progress({generation}:{generation:Generation}){
  const verified=generation.verification?.semantic_verified;
