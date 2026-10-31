@@ -47,3 +47,11 @@ export async function api(method, path, body) {
   return data;
 }
 
+// For a page that is being hidden or unloaded: a keepalive request outlives the document, so queued integrity
+// events still reach the backend when the candidate reloads, closes or switches away (context §8).
+export function sendOnLeave(path, body) {
+  if (!path.startsWith('/') || path.startsWith('//')) throw new TypeError('Use a relative API endpoint beginning with one slash.');
+  if (DEMO_BUILD && getMode()==='demo') return api('POST', path, body);
+  return fetch('/api'+path,{method:'POST',credentials:'include',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(response=>{if(!response.ok)throw new ApiError('REQUEST_FAILED','The request could not be completed.',response.status);});
+}

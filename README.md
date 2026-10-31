@@ -3,7 +3,7 @@
 > **Team PAARK · `HFT26-TEAM-36` · CBIT Hacktoberfest '26**
 > Problem statement: **Portfolio-Driven Adaptive Coding & Technical Assessment Platform**
 
-🎥 **Demo video:** _TODO: add link_ · 🌐 **Live URL:** _TODO: add link_ · ▶️ **How to run the demo:** [`deploy/README.md`](deploy/README.md)
+🎥 **Demo video:** _TODO: add link_ · 🌐 **Live URL:** _TODO: add link_ · ▶️ **Run it locally:** `deploy/start.sh` then `pnpm web:serve` ([Setup](#-setup))
 
 ---
 
@@ -83,7 +83,7 @@ Portfolio JSON ──► Onboarding quiz ──► 60-minute assessment ──�
 
 ## ✅ What's real today vs. what's next
 
-Merged into `main` and covered by tests (checked at `main` @ `19df7ff`):
+Merged into `main` and covered by tests:
 
 | Area | Status |
 | :--- | :--- |
@@ -99,37 +99,50 @@ Merged into `main` and covered by tests (checked at `main` @ `19df7ff`):
 | Task generation (K6, #54 → #60): the model only **selects** a reviewed family and scenario; contracts, code, tests and expected answers come from reviewed templates and oracles. Provider down → verified seed fallback, marked `seed_bank` | ✅ merged |
 | PostgreSQL persistence of profiles, assessments, files, runs, events, generation jobs and reports; restart-safe expiry; report history `GET /reports` (K11, #56) | ✅ merged |
 | AI efficiency score (context §12) and report builder that only counts unlocked question sets | ✅ merged |
-| One-command local deployment: PostgreSQL 16 in Compose, backend on the host, verify script (R6) | ✅ merged; verified on Windows, not yet on the demo Mac |
+| One-command local deployment: PostgreSQL 16 in Compose, backend on the host, verify script (R6) | ✅ merged; verified on Windows and on Linux (31 Oct, below) |
+| React + Vite + Monaco frontend, live-only client of this API: auth, portfolio (JSON, or a text PDF that the browser drafts into JSON for the candidate to review before validation), quiz, generation progress with receipts, workspace (timer, autosave, Run/Submit, unlocks, hints/assistant on later sets), "Submit all questions", report with claims, past reports (#59) | ✅ merged; full browser journey passes against the real stack (below) |
 
 **Claims vs demonstrated (P13):** reports include the assessment's claimed topics, the task that tested each one, and whether its final submission demonstrated that topic. Unattempted claims are explicitly marked untested. Claims are captured when the assessment starts, so re-uploading a portfolio does not rewrite earlier results.
 
-**Not finished yet (31 Oct, 08:15 IST):**
-- **Frontend** (React + Vite + Monaco, live-only client of this API): PR #59, under local end-to-end verification. Not merged.
-- **Cloud deployment** (Vercel frontend + one VM for backend, Docker sandbox and PostgreSQL): kit prepared in `deploy/cloud/` (R6b, #55) and runbook in [`docs/deploy/VERCEL_VM_RUNBOOK.md`](docs/deploy/VERCEL_VM_RUNBOOK.md). **Not deployed**: no VM host, Vercel URL or live verification yet.
-- **K8 final integration** (PR #58): needs a rebase onto the independent-validation policy; see [`docs/reviews/2026-10-31-pr58-review.md`](docs/reviews/2026-10-31-pr58-review.md).
+**Verified on 31 Oct 2026 (cloud Linux box, Node 24.22.1, PostgreSQL 16, Docker runner, production frontend bundle):**
+
+| Check | Result |
+| :--- | :--- |
+| `deploy/start.sh` → `/health` | `runner_available: true` |
+| `deploy/verify.sh --outage` (real HTTP: auth, portfolio, quiz, generation, Run/Submit in Docker, hint, report, cross-user 404s, Docker-down fails closed) | 33/33 checks passed |
+| `node src/frontend/tests/e2e/journey.mjs` (Chromium, steps a–j + b2: register/reload/sign-in, portfolio, PDF portfolio drafted and validated, quiz, receipts, 3 question sets with 2 unlocks, hint + assistant, 3rd unlock refused with 409, paste + reload restores timer/files, submit all, report with claims and integrity, past reports, portfolio without `arrays` gets a clear message) | 11/11 steps passed |
+| Frontend `pnpm --filter torquecode-frontend test` / `test:ui` | 26/26 · 53/53 |
+| Question preparation (generation + validation) before the first question appears | 52–90 s measured here (4 sequential Docker validations per task) |
+
+**Not finished yet:**
+- **Cloud deployment** (Vercel frontend + one VM): `src/frontend/vercel.json` + `middleware.ts` are in the repo; the VM kit is in `deploy/cloud/` and the runbook in [`docs/deploy/VERCEL_VM_RUNBOOK.md`](docs/deploy/VERCEL_VM_RUNBOOK.md). **Not deployed**: no VM hostname yet, so the `/api` rewrite still points at the `BACKEND_HOST` placeholder.
 
 **Future scope (pitch only, not built):** project-based assessments built around the candidate's own repositories, and camera-based proctoring.
 
 ## 🚀 Setup
 
-**How to run the demo:** `deploy/start.sh`, then `deploy/verify.sh`. Details in [`deploy/README.md`](deploy/README.md). The commands below are for local development.
+**Run the whole website locally (what the demo uses).** Needs Docker running and Node 24.22.1+:
 
-Local development, from the repository root (Node 24.22.1+, pnpm 11, uv, Python 3.13; PostgreSQL 16 and Docker for the full flow):
+```sh
+deploy/start.sh        # PostgreSQL 16 + runner image + migrations + backend on 127.0.0.1:3001
+pnpm web:serve         # production frontend on http://127.0.0.1:4177 (proxies /api to the backend)
+```
+
+Open http://127.0.0.1:4177/landing/ (story) or http://127.0.0.1:4177/#/register (app). `pnpm web:dev` is the
+hot-reload dev server instead; `web:serve` is faster for demos because Monaco ships as one pre-built chunk.
+Optional: put `FEATHERLESS_API_KEY` in `.env` for the live assistant; without it hints still work and the assistant
+shows a clear "unavailable" message. Check the stack with `deploy/verify.sh`, and stop it with `deploy/stop.sh`.
+More in [`deploy/README.md`](deploy/README.md).
+
+Development, from the repository root (Node 24.22.1+, pnpm 11, uv, Python 3.13):
 
 ```sh
 pnpm install --frozen-lockfile --ignore-scripts
 uv sync --project src/backend --python 3.13 --locked
 pnpm typecheck
 pnpm test
-pnpm dev                     # http://127.0.0.1:3001/health
-```
-
-Full candidate flow (auth + Docker sandbox):
-
-```sh
-docker build -t torquecode-runner-python:dev src/backend/runner/images/python
-pnpm db:migrate              # against a dedicated TorqueCode database
-APP_MODE=auth RUNNER=docker DATABASE_URL=... AUTH_ORIGIN=http://localhost:5173 pnpm dev
+pnpm --filter torquecode-frontend test && pnpm --filter torquecode-frontend run test:ui
+BASE_URL=http://127.0.0.1:4177 node src/frontend/tests/e2e/journey.mjs   # needs the running stack + Playwright
 ```
 
 Copy `.env.example` to `.env` for local secrets. `.env` is git-ignored; never commit keys.
@@ -151,6 +164,10 @@ Copy `.env.example` to `.env` for local secrets. `.env` is git-ignored; never co
 - Generated difficulty is approximate; different candidates get different tasks.
 - The sandbox is hackathon-grade, standard Docker isolation. Hidden-test **inputs** reach candidate code because it receives the arguments; only test source and expected outputs are secret. Production would need stronger isolation.
 - Assistant guards are heuristics, and AI hints can occasionally be wrong; hints are never used for grading.
+- Candidate code is **Python only** (Q7). The runner image, task families, validation and grading are Python + pytest; JavaScript is a contract value, not an implemented runner. Java/C++ would need new runner images, reviewed task families and oracles.
+- Question preparation runs before the first question is shown and currently takes about a minute (52–90 s measured); the 60-minute timer starts when the assessment is created, so that time counts against the session.
+- PDF portfolios are read in the browser with pdf.js and drafted into JSON with the intake taxonomy and domain keywords; it's keyword extraction, not understanding, so the candidate must review the draft. Scanned (image-only) PDFs have no text and are refused with a message.
+- Portfolios that don't claim `arrays` can't be served a question yet; the UI says so and asks the candidate to add it only if they've practised it.
 
 ## 📁 Repository layout
 
@@ -165,7 +182,7 @@ src/backend/
   intake/       portfolio parsing, domain detection, quiz            (Pranav)
   scoring/      AI efficiency score, report builder                  (Pranav)
   tests/        Vitest + pytest suites
-src/frontend/   web app                                              (Akshit)
+src/frontend/   React + Vite + Monaco web app, landing page, Vercel config (Akshit, Pranav)
 docs/           product context, backend plan, decisions, status logs, reviews
 ```
 

@@ -2,9 +2,11 @@ import {lazy,Suspense,useEffect,useRef,useState,type FormEvent} from 'react';
 import {Link,useNavigate} from 'react-router-dom';
 import type {OnMount} from '@monaco-editor/react';
 import type {AssessmentState,CandidateTask,File,RunResult} from '../types';
-const Editor=lazy(()=>import('../components/CodeEditor'));
+import {loadEditor} from '../editor-loader';
+const Editor=lazy(loadEditor);
 import FinishAssessment,{type FinishPhase} from '../components/FinishAssessment';
 import {api,Button,Chips,ErrorNotice,finishDemo,Icon,message,registerLeaveHandler,Skeleton,useApp,type Problem} from '../lib';
+import {sendOnLeave} from '../api.mjs';
 import {failed,POLL_MS,releasable,STAGES} from '../assessment';
 
 type Chat={role:'user'|'assistant';content:string;hint?:number};
@@ -40,6 +42,8 @@ export default function Workspace(){
   try{await request;}finally{if(saving.current===request)saving.current=null;}
   if(dirtyRef.current&&version.current!==snapshot)await save();
  }
+ // Hidden/unloading page: send the queue now with keepalive instead of waiting for the 10 s batch.
+ function flushOnLeave(){if(!events.current.length||!aid)return;const batch=events.current.splice(0,100);sendOnLeave(`/assessments/${aid}/events`,{events:batch}).catch(()=>{events.current.unshift(...batch);events.current=events.current.slice(-100);});}
  async function flush(){if(flushing.current||!events.current.length||!aid)return;flushing.current=true;const batch=events.current.splice(0,100);try{await api('POST',`/assessments/${aid}/events`,{events:batch});}catch{events.current.unshift(...batch);events.current=events.current.slice(-100);}finally{flushing.current=false;}}
  useEffect(()=>{
   if(!aid){navigate('/ready',{replace:true});return;}let cancelled=false,timer:ReturnType<typeof setTimeout>|undefined;
@@ -61,13 +65,13 @@ export default function Workspace(){
  useEffect(()=>{if(!aid)return;let active=true;const timer=setInterval(()=>{if(workingRef.current)return;api<AssessmentState>('GET',`/assessments/${aid}/status`).then(state=>{if(active){accept(state);setNotice((old:unknown)=>(old as Problem)?.code==='SANDBOX_UNAVAILABLE'?old:null);}}).catch(()=>{if(active)setNotice(new Error('Connection interrupted. Your edits are still here; reconnecting…'));});},15000);return()=>{active=false;clearInterval(timer);};},[aid]);
  useEffect(()=>{
   const capture=(type:Activity['type'],size?:number)=>{if(!taskRef.current||modelRef.current.assessment?.status!=='active')return;events.current.push({task_id:taskRef.current.task_id,client_ts:new Date().toISOString(),type,payload:size===undefined?{}:{size:Math.min(size,1000000)}});if(events.current.length>=20)void flush();};
-  const visibility=()=>capture(document.hidden?'tab_hidden':'tab_visible');
+  const visibility=()=>{capture(document.hidden?'tab_hidden':'tab_visible');if(document.hidden)flushOnLeave();};const leave=()=>flushOnLeave();
   const copy=()=>{const input=document.activeElement as HTMLTextAreaElement;capture('copy',typeof input?.selectionStart==='number'?Math.abs(input.selectionEnd-input.selectionStart):getSelection()?.toString().length||0);};
   const paste=(e:ClipboardEvent)=>capture('paste',e.clipboardData?.getData('text').length||0);
   const unload=(e:BeforeUnloadEvent)=>{if(dirtyRef.current){e.preventDefault();e.returnValue='';}};
-  document.addEventListener('visibilitychange',visibility);document.addEventListener('copy',copy);document.addEventListener('paste',paste);window.addEventListener('beforeunload',unload);
+  document.addEventListener('visibilitychange',visibility);document.addEventListener('copy',copy);document.addEventListener('paste',paste);window.addEventListener('beforeunload',unload);window.addEventListener('pagehide',leave);
   const timer=setInterval(()=>void flush(),10000);
-  return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',visibility);document.removeEventListener('copy',copy);document.removeEventListener('paste',paste);window.removeEventListener('beforeunload',unload);void flush();void save().catch(()=>{});};
+  return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',visibility);document.removeEventListener('copy',copy);document.removeEventListener('paste',paste);window.removeEventListener('beforeunload',unload);window.removeEventListener('pagehide',leave);void flush();void save().catch(()=>{});};
  },[aid]);
  useEffect(()=>{chatLog.current?.scrollTo({top:chatLog.current.scrollHeight,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});},[chats,task?.task_id]);
  async function switchTask(id:string){if(workingRef.current||id===task?.task_id)return;setNotice(null);try{await save();const next=normalize(await api<CandidateTask>('GET',`/assessments/${aid}/tasks/${id}`));setTask(next);setFileIndex(0);setResultTab('tests');setChatInput('');}catch(e){setNotice(e);}}

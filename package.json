@@ -20,6 +20,9 @@
     "db:migrate": "pnpm --filter @torquecode/backend db:migrate",
     "gen:smoke": "pnpm --filter @torquecode/backend gen:smoke",
     "llm:eval": "pnpm --filter @torquecode/backend llm:eval",
-    "llm:smoke": "pnpm --filter @torquecode/backend llm:smoke"
+    "llm:smoke": "pnpm --filter @torquecode/backend llm:smoke",
+    "web:dev": "pnpm --filter torquecode-frontend dev",
+    "web:build": "pnpm --filter torquecode-frontend build",
+    "web:serve": "pnpm --filter torquecode-frontend build && pnpm --filter torquecode-frontend preview"
   }
 }

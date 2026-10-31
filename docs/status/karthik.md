@@ -209,3 +209,10 @@ Finalize integrated tests, documentation audit, pre-push hook and PR to vudigapr
 - Final clean verification: typecheck/build passed; full suite with real PostgreSQL and Docker 405 passed / 0 failed / 0 skipped (25 files); default database command 27 passed (auth + persistence); Python reporter 4 passed; submission-gate fixture tests 6 passed. Initial local-run failures were due to the fresh review checkout lacking its locked Python environment; after setup the focused checks and clean full run passed.
 - Separate throwaway database + actual production server over HTTP: three-set seed journey, both unlocks, real Docker Run/Submit, report score/AIE/integrity/claims/history passed. Terminated/relaunched the backend: files, deadline, unlocks and report unchanged. Forced expiry in the private review database, restarted twice: durable final report/history and exactly one committed session_end verified. Test backend stopped afterward.
 - No live-provider or cloud verification is claimed. K8 still owns generator wiring. Independent semantic correctness of unrestricted generated tasks remains unresolved; Pranav's requested review reply is on PR #54 (issuecomment-6536465616). K11 persistence does not certify those tasks as semantically correct.
+
+## 2026-10-31 — K8 full integration
+
+- Added a real PostgreSQL end-to-end assessment journey using `docs/demo/demo-portfolio.json`, covering registration/login, quiz, three sets, two unlocks, hints, fake guarded assistant, report claims and restart persistence.
+- Connected K6's generator through the existing Ports interface, keeping K5 deterministic validation and compatible reviewed seed fallback.
+- Verification before final suite: typecheck and build passed; 18/18 isolated PostgreSQL persistence tests passed. Added a focused wiring regression for provider outage and dependency override behavior.
+- Scope: no teammate-owned generation, runner, LLM or frontend implementation changes. The test does not claim live Featherless performance or cloud deployment.

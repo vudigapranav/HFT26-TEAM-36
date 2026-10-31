@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.tsbuildinfo
+tests/e2e/screenshots/

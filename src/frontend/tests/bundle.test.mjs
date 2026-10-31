@@ -9,7 +9,10 @@ test('Monaco is only reachable through the lazily loaded CodeEditor (G9)', () =>
   const workspace = src('src/pages/Workspace.tsx');
   // Type-only imports are erased; any value import would pull the editor into the Workspace chunk.
   assert.doesNotMatch(workspace, /^import (?!type )[^\n]*from '@monaco-editor\/react'|import '\.\.\/monaco-setup'/m);
-  assert.match(workspace, /lazy\(\(\)=>import\('\.\.\/components\/CodeEditor'\)\)/);
+  assert.match(workspace, /lazy\(loadEditor\)/);
+  // The only dynamic import of the editor is the shared loader (also used to prefetch on the start screen).
+  assert.match(src('src/editor-loader.ts'), /import\('\.\/components\/CodeEditor'\)/);
+  assert.doesNotMatch(src('src/pages/Ready.tsx'), /monaco|components\/CodeEditor/);
   assert.match(src('src/components/CodeEditor.tsx'), /import '\.\.\/monaco-setup'/);
 });
 
