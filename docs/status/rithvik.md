@@ -405,3 +405,123 @@ Base: origin/main `5545766` (K10 PR 42 merged). Branch `rithvik/runner-admission
 | D2 | Low | `deploy/stop.sh` kills **whatever** listens on the backend port if the graceful stop fails; it doesn't verify the process is ours. | `deploy/lib.sh` | Record the native PID at start (have the backend write it) and check the command line before killing. |
 | D3 | Medium | IPC limits are per message (1 MiB) and per call count (10,000), with no cumulative byte budget per run. A run could relay up to about 10 GB in the worst case, bounded in practice only by the time limit and the grader's memory. | `runner/dockerRunner.ts` | Add a cumulative relayed-bytes budget per run (e.g. 32 MiB). Over budget means the worker is killed and the tests are `error`. |
 | D4 | Medium | The guarded assistant blocks code fragments, not prose: "loop over every element instead" can still give away a one-token fix. | `llm/guards.ts`, `llm/assistant.ts` | A reference-aware prose check (the tokens that differ between starter and reference, mentioned in prose), plus a per-task cap on assistant messages (TODO(OPEN-ASSISTANT-LIMITS)). |
+
+## 2026-10-31 05:10 — K6 — live task generation (`Ports.generateAssessment`)
+Base: origin/main `a32c5cb` (K5 PR 44 and admission PR 49 merged). Branch `rithvik/k6-generation`.
+- **Files:**
+  - `generation/generate.ts`: `createGenerator(deps)` returns `Ports['generateAssessment']`.
+  - `generation/spec.ts`: defensive parsing of the model's proposal.
+  - `generation/template.ts`: the fixed trusted test template and probe.
+  - `generation/mutate.ts`: deterministic starter mutations.
+  - `generation/prompts/task-v1.md`: the versioned prompt.
+  - `generation/smoke.ts` and `pnpm gen:smoke`.
+  - `llm/assistant.ts`: task text is now fenced as untrusted.
+  - Tests: `tests/generation/generate.test.ts`; 4 injection tests added to `tests/llm/assistant.test.ts`.
+- **Pipeline, per tier, in parallel; at most 3 attempts with the failing reason fed back:**
+  1. One `Ports.chat` call (`purpose: generation`) with the versioned prompt. The candidate's `tech_stack`/`skills` go inside a nonce fence with tag-like text stripped.
+  2. The model returns a JSON header (title, statement, topics ⊆ claimed, `app/<m>.py:<func>` entrypoint, 3 hints, 6–12 input cases with visibility) plus `<file>` reference sections. **It never writes test code**, and any `expected` field it supplies is ignored.
+  3. **The reference is run through R3** with a trusted probe file. The probe lives only in the grader and its nonce exists only there, so the reference can't forge a result. Its outcome (value or builtin exception) becomes the expected value.
+  4. The fixed template renders `tests/test_visible.py` and `tests/test_hidden.py` as plain-data calls with `pyLiteral` expected values, so no model text becomes Python except the reference, which only ever runs in the R3 worker.
+  5. The starter is the first one-line mutation of the entry file that fails at least one visible test and passes at least one test: off-by-one range or iteration, flipped comparison, `max`/`min`, `and`/`or`, ±1. The F2P/P2P lists come from that observed run.
+  6. **Karthik's K5 `validateTask` decides.** Only `valid: true` is released.
+  7. Anything else falls back to the reviewed seed task for that tier, with `source: "seed_bank"` (never called personalized): model unavailable or no key (no retries), runner or validator unavailable, unsupported values, or 3 failed attempts.
+  - **Master** always uses the reviewed seed, with no model call. K5's performance gate needs a correct-but-slow starter, which a one-line mutation can't produce.
+  - Progress events use `assessment_id: 'pending'`, because the seam carries no ID; K11 must substitute the real one. Everything is cancellable through `Context.signal`. All Docker work goes through the R3 runner and its admission limit.
+- **Tests: `tests/generation` 41 passed** (my 27 + Karthik's 14 K5 tests), with `TORQUECODE_PYTHON` set to a real Python (on this machine `python3` is the Windows Store stub).
+  - **Mocked chat, no runner:** parsing rejects 11 kinds of bad proposals; model `expected` values are ignored; Python literals; mutations never touch docstrings and try the entrypoint first; provider down gives seeds with 2 calls and no retries (Master makes none); unparseable output is retried with the reason, then a seed is used; an unclaimed topic is rejected before running; portfolio injection stays fenced; abort while waiting on the model.
+  - **Mocked chat, REAL Docker:** a valid task is built (expected values computed: `busiest_hour([3, 9, 9, 2]) == 1`, not the model's 999), and **it passes the real K5 validator on every gate**. A K5 rejection is fed back and then falls back. A reference returning an object, raising on every case, or with nothing to mutate is never released. Two concurrent generations both complete.
+  - Assistant: task text is fenced, the "(trusted)" label is gone, an obeyed injection is stopped by the output guard, honest questions still work, and the title can't close the fence.
+  - Full suite: **345 passed, 7 failed** (the same `runner/local` and seam tests as main), **9 skipped** (PostgreSQL harness). `pnpm typecheck` OK.
+- **Live (real Featherless + real R3 + real K5), `pnpm gen:smoke` on `normal-web.json`, cap $0.20:**
+  - **Run 1:** Adept **generated, valid on all 10 gates** after 3 attempts; Novice gave "no visible mutation" 3 times and fell back to the seed. 6 calls to `Qwen/Qwen3-Coder-30B-A3B-Instruct`; model latency 5.7–23.7 s; 3,982 prompt + 3,271 completion tokens; **$0.00197**; 52.6 s total.
+    - Root cause: the model iterates directly (`for x in xs`), which the first mutation set couldn't break. I added the slice off-by-one, `max`/`min`, `and`/`or` and `- 1` rules, plus helper functions.
+  - **Run 2:** **Novice ("Find Duplicate File IDs", 3 attempts) and Adept ("Find the Most Frequent Element in a List", 1 attempt) both generated and valid on all 10 K5 gates**; Master from the seed. 4 calls; 7.0–9.6 s; 2,628 + 1,828 tokens; **$0.00115**; 42.9 s total.
+  - Total live spend for K6: **about $0.0031**. I didn't review the generated tasks' wording by hand, only their K5 receipts.
+- **Integration for Karthik (K11):** in `api/wiring.ts`, add
+  ```ts
+  import { createGenerator } from '../generation/generate.js';
+  generateAssessment: createGenerator({ chat: wired.chat, runTests: wired.runTests, validateTask: wired.validateTask, seedBank: () => Promise.resolve(seed_bank) })
+  ```
+  Run it as a background job. Map `progress` events to the real `assessment_id`. Pass an `AbortSignal` that fires when the assessment is cancelled. Production machines need a real Python for K5 (`TORQUECODE_PYTHON` or `python3`).
+- **For Akshit:** `statement_md` and `title` of generated tasks are **model output**. Render them as sanitized markdown or text, never as raw HTML.
+- **Limitations:**
+  - Only bug-fix tasks are generated (no feature stubs yet). Master is always a seed.
+  - One model call per attempt (spec, reference and cases together), not staged.
+  - Mutation search costs up to 12 R3 runs per attempt.
+  - The quality of the statement and hint wording rests on the prompt plus K5's leakage gate, and isn't reviewed by a human before release.
+  - Generated tasks inherit R3's limits: hidden-test inputs are visible to the candidate's function.
+
+### K6 review corrections (2026-10-31, after Rithvik's review of PR 54)
+- **Manual inspection of real generated tasks.** `GEN_SMOKE_DUMP=<file outside the repo>` (new in `generation/smoke.ts`; refuses paths inside the repo) dumps the full tasks. I read the statement, reference, starter diff, visible and hidden cases, hints and F2P/P2P.
+  - **Run 3 (prompt v1): 2 real problems that K5 accepted.**
+    1. Novice "Find Duplicate File IDs": the statement says return **"any"** duplicate, but hidden test `find_duplicate_id([1, 1, 2, 2]) == 1` expects one specific one. A correct "any duplicate" solution returning 2 fails it, so the statement and tests contradict each other.
+    2. Both tasks' **hints** were model-written for "write the function from scratch" ("use a set", "case sensitivity"), not for the injected bug (the loop skips the last element). The model writes hints before the bug exists.
+    - Also: Adept "Web Form Validation" is solvable, and hidden `["test@domain.", "@domain.com"] == True` follows the literal stated rule but is a gotcha. Adept was no harder than Novice.
+  - **Fixes (K6 only):**
+    1. Hints are now **derived from the injected mutation** (`bugHints(kind, func)`): three Socratic hints with no code, still checked by K5's leakage gate. The model no longer supplies hints.
+    2. Prompt **`task-v2`** (`task-v1` kept for history): the statement must define exactly one correct output for every input, with "the first / the smallest …", never "any …". There's a stronger Adept guide and no hints field.
+  - **Run 4 (prompt v2), inspected by hand:**
+    - Novice "Find the Smallest Missing Positive Integer": the statement is unambiguous. I traced the reference against all 11 cases and every expected value is correct. The starter `for num in nums[:-1]` fails 3 visible tests. Coherent and solvable.
+    - Adept "Find the Most Frequent Even Element": ties are defined ("smallest"). I traced the reference's tie logic on orders the tests don't cover (`[4, 4, 2, 2]`, `[2, 4, 4, 2]`) and both give 2. The starter fails visible `[2, 2, 4, 4, 4]`. Coherent and solvable.
+    - Hints point at the loop. Both receipts are valid on all 10 gates. 3 calls; 7.6–9.5 s; 1,969 + 1,457 tokens; **$0.0009**; 31.6 s total.
+  - **Still weak, recorded rather than fixed:**
+    - The model ignored the harder-Adept guidance, so tier difficulty isn't enforced by anything deterministic.
+    - Both bugs were the same slice off-by-one, the first mutation rule that worked, so there's little variety.
+    - A statement/test contradiction like run 3's can still happen. Nothing deterministic checks the prose against the tests; the prompt rule only makes it less likely.
+- **What K5's gates do and don't prove.** `differential: pass` currently means **the reference gives identical results across its 3 runs** (determinism). It is **not** an independent semantic check: there's no brute-force oracle compared against the reference. `examples: pass` means the visible tests match the manifest, not that the statement's prose example was run. So **"valid on all 10 gates" means "structurally sound, the reference passes its own computed tests, the starter fails as declared, no leaks". It is not proof of a correct, unambiguous natural-language problem.** Since the tests are computed from the reference, a wrong reference gives consistent but wrong tests, and only review or an independent oracle would catch that.
+- **Not live in the assessment API.** `generateAssessment` isn't wired. `api/wiring.ts` and `api/dev-stubs.ts` still use the stub that returns `unavailable`. Karthik's K11 has to run it as a background job (the call is in the K6 entry above), map `progress` to the real `assessment_id`, and pass the cancel signal. Until then, assessments use seed tasks only.
+- Tests: `tests/generation` **50 passed** (8 new bug-hint tests; the generated task's `hint_ladder` equals `bugHints('off_by_one_range', 'busiest_hour')`, and it passes the real K5 validator, leakage gate included). `pnpm typecheck` OK.
+
+## 2026-10-31 — K6 maintainer merge review
+- Updated against current main, retaining Pranav's P13 report/claims integration.
+- Fixed fallback topic bounding: select a seed only when every DSA topic was claimed by the candidate, searching past incompatible seeds. Without compatible coverage for all tiers, return unavailable rather than release an unclaimed question.
+- Added two fallback regressions. Updated the smoke default to the existing demo portfolio, which explicitly claims the seed topics; GEN_SMOKE_PORTFOLIO can select another input without silently changing its claims.
+- Verification: build/typecheck passed; generation + LLM suites 189 passed with real Docker and mocked chat, no skips. No new paid/live-provider evaluation is claimed. Master remains a reviewed seed; generated Adept complexity and prose validation limitations remain as previously documented. K8 still owns production API wiring.
+
+## 2026-10-31 05:30 — R6b — cloud VM + Vercel: PREPARED, NOT DEPLOYED
+Base: origin/main `a32c5cb`. Branch `rithvik/r6b-cloud`; only `deploy/cloud/` and status changed. **No VM had been provided**, so nothing has run on a VM or a public URL.
+- **Prepared:**
+  - `deploy/cloud/setup-vm.sh`: Ubuntu 24.04, idempotent. Installs Docker Engine + Compose, Node 24, Caddy and Python 3. Firewall: 443 plus SSH from `ADMIN_SSH_CIDR` only. Dedicated `torquecode` user. Then PostgreSQL in Compose on 127.0.0.1, runner image, build, migrations, secrets files (640), Caddy, systemd, and a local health check. It prints the proxy secret once.
+  - `torquecode-backend.service`: hardened, but deliberately without `PrivateTmp`, because dockerd must bind-mount the runner's `/tmp` workspaces.
+  - `Caddyfile`: auto-HTTPS on 443. Requests without the `X-TorqueCode-Proxy` secret get 403; the header is stripped; `X-Forwarded-For` is set from Vercel's `X-Real-IP`.
+  - `backend.env.example`, `vercel.json.example`, and `README.md` (security model, install, operations, recovery, verification checklist).
+- **Checked here:**
+  - `bash -n setup-vm.sh` OK.
+  - The official `caddy:2` image reports the Caddyfile as `Valid configuration`.
+  - The gate, run locally on HTTP: no secret gives **403**, a wrong secret **403**, the correct secret passes to the upstream (502 with no backend running).
+  - Not checked: the setup script on Ubuntu, ACME certificates, systemd, ufw, the Vercel middleware and rewrite, and every item on the README's verification checklist.
+- **Blockers and owners:**
+  - **Pranav:** the VM and DNS for `<backend-host>`.
+  - **Karthik (K11):** `TRUST_PROXY`, so the client IP is read from one trusted hop (Caddy on loopback); without it, every user shares one IP and the auth rate limiter blocks them. Also PostgreSQL persistence for assessments, so restarts keep them.
+  - **Akshit:** `src/frontend/vercel.json` and `middleware.ts` as given in `deploy/cloud/README.md`, the `TORQUECODE_PROXY_SECRET` env var in Vercel, relative `/api` calls, and sanitized rendering of generated task text.
+- **Honest risk:** the `torquecode` user is in the `docker` group, which is root-equivalent on the VM. Use a dedicated VM. Rootless Docker hasn't been tried (it needs cgroup v2 delegation to keep R3's limits).
+
+## 2026-10-31 — R6b review corrections: still PREPARED, NOT DEPLOYED
+Branch `rithvik/r6b-cloud`; only `deploy/cloud/` and status changed. The PR stays a **draft** until Pranav provides the VM and the end-to-end checks pass. The backend stays on the host, and no Docker socket is mounted in any container.
+1. **Proxy secret in the Caddy access log.**
+   - Failing condition (reproduced locally with Caddy): a request through the gate was logged with `"X-Torquecode-Proxy": ["<secret>"]` in clear. Caddy redacts only `Cookie`/`Authorization` itself.
+   - Fix: the Caddyfile's log `format filter` deletes `request>headers>X-Torquecode-Proxy`.
+   - Test: 3 requests (two header spellings, one wrong guess) left 0 occurrences of either value in the log; the gate still gave 502/502/403; `caddy validate` passes.
+   - Limitation: checked on local HTTP, not on the VM's HTTPS site.
+2. **Secret regenerated on every `setup-vm.sh` rerun.**
+   - Failing condition: `PROXY_SECRET` was always regenerated, so a rerun left Vercel holding the old one and every request got 403.
+   - Fix: `deploy/cloud/proxy-secret.sh` (`ensure_proxy_secret`) reuses a well-formed secret already in `/etc/caddy/torquecode.env`. Rotation happens only with `ROTATE_PROXY_SECRET=1`. The secret is printed only when generated or rotated, and a rotation prints a 403 warning.
+   - Test: `bash deploy/cloud/test-proxy-secret.sh` passes 8/8 (generate, rerun keeps it, explicit rotation changes it, missing or malformed secret regenerates); `bash -n setup-vm.sh` OK.
+   - Limitation: the full script has not run on Ubuntu.
+3. **Vercel middleware trusted a client header.**
+   - Failing condition: the README snippet copied the incoming `x-real-ip` header and left any client-sent `x-forwarded-for`, `forwarded` or `x-torquecode-proxy` in the request. It sent an empty secret when the env var was missing.
+   - Fix: `deploy/cloud/vercel/middleware.ts` + `torquecode-proxy-headers.mjs`.
+     - The client IP comes only from `ipAddress(request)` (`@vercel/functions`).
+     - All client forwarding/identity headers and any client-sent `x-torquecode-proxy` are deleted.
+     - `x-real-ip` and `x-forwarded-for` are set to that one IP, and the secret is added.
+     - It fails closed (503 with no secret, 400 with no valid IP).
+   - Test: `node --test deploy/cloud/vercel/torquecode-proxy-headers.test.mjs` passes 4/4 (spoofed values gone, IP not appended to a spoofed chain, cookie/origin kept, fail-closed cases, input not mutated).
+   - Limitations:
+     - `middleware.ts` wasn't type-checked or run on Vercel (`@vercel/functions` isn't a repo dependency; Akshit adds it with the files).
+     - Vercel's docs don't explicitly say that middleware-modified request headers reach an **external** rewrite destination; README checklist items 8–9 verify this live.
+4. **Not deployment-ready.** Nothing has run on a VM, Caddy with ACME, systemd, ufw or Vercel. `TRUST_PROXY` (Karthik, K11) is still a blocker.
+
+## 2026-10-31 — R6b maintainer merge review
+- Reviewed and merged only as a prepared deployment kit, per Pranav's request; no VM deployment or public URL verification is claimed.
+- Fixed setup health polling: exhausting all attempts now returns failure rather than inheriting a successful final sleep. Added three command-fixture regressions for immediate success, eventual success and exhausted failure.
+- Local checks: proxy-secret 8 passed, health polling 3 passed, proxy-header 4 passed; setup shell syntax and diff checks passed. Existing Caddy/middleware deployment verification limitations remain documented in deploy/cloud/README.md.

@@ -1,0 +1,39 @@
+# systemd unit for the TorqueCode backend (host process; Fastify on 127.0.0.1:3001).
+# Installed by deploy/cloud/setup-vm.sh as /etc/systemd/system/torquecode-backend.service.
+#
+# The service user is in the `docker` group because it starts the R3 runner containers.
+# That is effectively root-equivalent on this VM: keep it a dedicated VM with nothing else on it.
+[Unit]
+Description=TorqueCode backend
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=torquecode
+Group=torquecode
+SupplementaryGroups=docker
+WorkingDirectory=/opt/torquecode/src/backend
+EnvironmentFile=/etc/torquecode/backend.env
+Environment=NODE_ENV=production
+Environment=RUNNER_HARNESS_DIR=/opt/torquecode/src/backend/runner/harness
+ExecStart=/usr/bin/node dist/api/server.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+
+# Hardening that is compatible with the Docker runner.
+# NOT PrivateTmp: the runner writes per-run workspaces under /tmp that dockerd must bind-mount.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

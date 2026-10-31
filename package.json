@@ -18,6 +18,7 @@
     "test:persistence": "pnpm --filter @torquecode/contracts build && node scripts/test-auth.mjs --persistence",
     "test:auth": "pnpm --filter @torquecode/contracts build && node scripts/test-auth.mjs",
     "db:migrate": "pnpm --filter @torquecode/backend db:migrate",
+    "gen:smoke": "pnpm --filter @torquecode/backend gen:smoke",
     "llm:eval": "pnpm --filter @torquecode/backend llm:eval",
     "llm:smoke": "pnpm --filter @torquecode/backend llm:smoke"
   }
