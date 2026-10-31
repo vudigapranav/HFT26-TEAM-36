@@ -19,6 +19,6 @@ test('sample data is only reachable through the build-gated preview adapter (G1)
   const api = readFileSync(new URL('../src/api.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(api, /demo-data/, 'the live client must not import sample data');
   assert.match(api, /DEMO_BUILD && getMode\(\)==='demo'/);
-  const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(main, /demoAvailable\(\)\?<button className="mode-button"/, 'the footer mode switch is preview-only');
 });
