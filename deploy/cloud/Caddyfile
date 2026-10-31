@@ -44,6 +44,13 @@
 	}
 	log {
 		output file /var/log/caddy/torquecode.log
-		format json
+		# Caddy logs request headers; it redacts Cookie/Authorization itself but NOT our proxy
+		# secret, which would otherwise be written to disk in clear on every request.
+		format filter {
+			wrap json
+			fields {
+				request>headers>X-Torquecode-Proxy delete
+			}
+		}
 	}
 }

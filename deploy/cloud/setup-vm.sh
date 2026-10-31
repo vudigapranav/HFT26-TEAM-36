@@ -69,7 +69,9 @@ chown root:torquecode /etc/torquecode/backend.env; chmod 640 /etc/torquecode/bac
 grep -q '^FEATHERLESS_API_KEY=.' /etc/torquecode/backend.env || echo "NOTE: add FEATHERLESS_API_KEY to /etc/torquecode/backend.env (AI is off until then)"
 
 say "Caddy (HTTPS) and the backend service"
-PROXY_SECRET="${PROXY_SECRET:-$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')}"
+# The secret is kept across reruns (Vercel holds a copy); rotate only with ROTATE_PROXY_SECRET=1.
+. "$APP/deploy/cloud/proxy-secret.sh"
+ensure_proxy_secret /etc/caddy/torquecode.env "${ROTATE_PROXY_SECRET:-0}"
 install -d -m 750 /etc/caddy
 cp "$APP/deploy/cloud/Caddyfile" /etc/caddy/Caddyfile
 cat > /etc/caddy/torquecode.env <<EOF
@@ -89,6 +91,11 @@ systemctl restart caddy
 say "Local health"
 for _ in $(seq 1 30); do curl -fsS --max-time 3 http://127.0.0.1:3001/health && break; sleep 2; done || die "backend not healthy: journalctl -u torquecode-backend"
 echo
-echo "Set this in the Vercel project (Akshit) as TORQUECODE_PROXY_SECRET, then redeploy the frontend:"
-echo "  ${PROXY_SECRET}"
-echo "Stored in /etc/caddy/torquecode.env (root:caddy 640). It is shown only once here."
+if [ "$PROXY_SECRET_STATE" = existing ]; then
+  echo "Proxy secret unchanged (kept from /etc/caddy/torquecode.env). Rotate with ROTATE_PROXY_SECRET=1."
+else
+  echo "Proxy secret ${PROXY_SECRET_STATE}. Set it in the Vercel project (Akshit) as TORQUECODE_PROXY_SECRET, then redeploy:"
+  echo "  ${PROXY_SECRET}"
+  echo "Stored in /etc/caddy/torquecode.env (root:caddy 640). It is printed only when generated or rotated."
+  [ "$PROXY_SECRET_STATE" = rotated ] && echo "Until Vercel is updated, every request is refused (403)."
+fi

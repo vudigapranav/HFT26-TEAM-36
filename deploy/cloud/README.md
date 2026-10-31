@@ -35,6 +35,12 @@ browser ─HTTPS─▶ Vercel (frontend; middleware adds X-TorqueCode-Proxy; rew
   browser only ever talks to the Vercel origin (first-party), with no CORS.
 - **Secrets:** `/etc/torquecode/backend.env` (root:torquecode 640) and `/etc/caddy/torquecode.env` (root:caddy 640).
   Never in git, never in the frontend. The proxy secret also lives in Vercel's project env.
+  - **Access log:** Caddy logs request headers. It redacts `Cookie`/`Authorization` itself, but not our proxy secret,
+    so the Caddyfile's log `format filter` deletes `X-Torquecode-Proxy` from every log entry. (Tested locally with
+    Caddy: before the filter the secret appeared in clear; after it, 0 occurrences in the log.)
+  - **Reruns keep the secret:** `setup-vm.sh` reuses the `PROXY_SECRET` already in `/etc/caddy/torquecode.env`, so a
+    rerun doesn't break Vercel. To rotate it on purpose, run `ROTATE_PROXY_SECRET=1 bash setup-vm.sh`, then update
+    Vercel and redeploy straight away: every request gets 403 until you do. Tests: `bash deploy/cloud/test-proxy-secret.sh`.
 
 ## Prerequisites
 
@@ -52,24 +58,26 @@ BACKEND_HOST=<backend-host> ACME_EMAIL=<you@example.com> AUTH_ORIGIN=https://<ve
 ```
 
 Then add `FEATHERLESS_API_KEY` (and `TRUST_PROXY` once K11 ships it) to `/etc/torquecode/backend.env` and run
-`systemctl restart torquecode-backend`. The script prints the proxy secret once: put it in Vercel.
+`systemctl restart torquecode-backend`. The script prints the proxy secret only when it generates or rotates one:
+put it in Vercel.
 
 ## Vercel (Akshit's folder: send him these, don't edit `src/frontend` yourself)
 
 - `src/frontend/vercel.json`: see `deploy/cloud/vercel.json.example` (rewrite `/api/:path*` and the SPA fallback).
-- `src/frontend/middleware.ts` (Vercel Routing Middleware), with env var `TORQUECODE_PROXY_SECRET`:
-  ```ts
-  import { next } from '@vercel/functions';
-  export const config = { matcher: '/api/:path*' };
-  export default function middleware(request: Request) {
-    const headers = new Headers(request.headers);
-    headers.set('x-torquecode-proxy', process.env.TORQUECODE_PROXY_SECRET ?? '');
-    headers.set('x-real-ip', request.headers.get('x-real-ip') ?? '');
-    return next({ request: { headers } });
-  }
-  ```
-  To verify on the real deployment: the middleware's request headers reach the rewrite destination, and `x-real-ip`
-  is Vercel's (unspoofable) client IP.
+- `src/frontend/middleware.ts` + `src/frontend/torquecode-proxy-headers.mjs` (Vercel Routing Middleware): copy
+  `deploy/cloud/vercel/middleware.ts` and `deploy/cloud/vercel/torquecode-proxy-headers.mjs`, add `@vercel/functions`,
+  and set the env var `TORQUECODE_PROXY_SECRET` (Production). For each `/api/*` request it:
+  - takes the client IP only from `ipAddress(request)` (`@vercel/functions`), the platform-provided value. Vercel's
+    docs say it overwrites `X-Forwarded-For` and doesn't forward external IPs, to prevent spoofing;
+  - deletes every client-sent forwarding header (`forwarded`, `x-forwarded-for`, `x-real-ip`, `true-client-ip`,
+    `cf-connecting-ip`, `x-client-ip`, …) and any client-sent `x-torquecode-proxy`, then sets `x-real-ip` and
+    `x-forwarded-for` to that single IP and adds the secret;
+  - fails closed (503) if the secret is missing, or with 400 if there is no valid platform IP. It never forwards a guess.
+
+  Tests (no Vercel needed): `node --test deploy/cloud/vercel/torquecode-proxy-headers.test.mjs`. **Still to verify on
+  the real deployment** (the docs don't explicitly cover an external rewrite destination): the headers set by the
+  middleware actually reach Caddy (`/health` through Vercel gives 200, not 403), and a request sent through Vercel with
+  a forged `X-Forwarded-For` is logged by Caddy with the real client IP.
 - The frontend calls relative `/api/...` only. Render generated task `title`/`statement_md` as sanitized markdown,
   never raw HTML.
 
@@ -100,3 +108,6 @@ PostgreSQL being down (`docker compose -f /opt/torquecode/deploy/docker-compose.
 6. `systemctl stop docker`, then Run gives 503 and no grade; start Docker again.
 7. Repeated logins with a forged `X-Forwarded-For` sent straight to the VM get 403 (Caddy); through Vercel, the rate
    limit applies per real client IP (**needs K11 TRUST_PROXY**).
+8. `curl -H 'X-Forwarded-For: 6.6.6.6' https://<vercel-app>/api/health`, then check `/var/log/caddy/torquecode.log`:
+   `X-Real-Ip` is your real IP, not 6.6.6.6, and `grep -c "$PROXY_SECRET" /var/log/caddy/torquecode.log` gives 0.
+9. Rerun `setup-vm.sh` (no rotation): it reports "Proxy secret unchanged" and requests through Vercel still give 200.

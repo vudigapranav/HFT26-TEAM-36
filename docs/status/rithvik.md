@@ -423,3 +423,28 @@ Base: origin/main `a32c5cb`. Branch `rithvik/r6b-cloud`; only `deploy/cloud/` an
   - **Karthik (K11):** `TRUST_PROXY`, so the client IP is read from one trusted hop (Caddy on loopback); without it, every user shares one IP and the auth rate limiter blocks them. Also PostgreSQL persistence for assessments, so restarts keep them.
   - **Akshit:** `src/frontend/vercel.json` and `middleware.ts` as given in `deploy/cloud/README.md`, the `TORQUECODE_PROXY_SECRET` env var in Vercel, relative `/api` calls, and sanitized rendering of generated task text.
 - **Honest risk:** the `torquecode` user is in the `docker` group, which is root-equivalent on the VM. Use a dedicated VM. Rootless Docker hasn't been tried (it needs cgroup v2 delegation to keep R3's limits).
+
+## 2026-10-31 — R6b review corrections: still PREPARED, NOT DEPLOYED
+Branch `rithvik/r6b-cloud`; only `deploy/cloud/` and status changed. The PR stays a **draft** until Pranav provides the VM and the end-to-end checks pass. The backend stays on the host, and no Docker socket is mounted in any container.
+1. **Proxy secret in the Caddy access log.**
+   - Failing condition (reproduced locally with Caddy): a request through the gate was logged with `"X-Torquecode-Proxy": ["<secret>"]` in clear. Caddy redacts only `Cookie`/`Authorization` itself.
+   - Fix: the Caddyfile's log `format filter` deletes `request>headers>X-Torquecode-Proxy`.
+   - Test: 3 requests (two header spellings, one wrong guess) left 0 occurrences of either value in the log; the gate still gave 502/502/403; `caddy validate` passes.
+   - Limitation: checked on local HTTP, not on the VM's HTTPS site.
+2. **Secret regenerated on every `setup-vm.sh` rerun.**
+   - Failing condition: `PROXY_SECRET` was always regenerated, so a rerun left Vercel holding the old one and every request got 403.
+   - Fix: `deploy/cloud/proxy-secret.sh` (`ensure_proxy_secret`) reuses a well-formed secret already in `/etc/caddy/torquecode.env`. Rotation happens only with `ROTATE_PROXY_SECRET=1`. The secret is printed only when generated or rotated, and a rotation prints a 403 warning.
+   - Test: `bash deploy/cloud/test-proxy-secret.sh` passes 8/8 (generate, rerun keeps it, explicit rotation changes it, missing or malformed secret regenerates); `bash -n setup-vm.sh` OK.
+   - Limitation: the full script has not run on Ubuntu.
+3. **Vercel middleware trusted a client header.**
+   - Failing condition: the README snippet copied the incoming `x-real-ip` header and left any client-sent `x-forwarded-for`, `forwarded` or `x-torquecode-proxy` in the request. It sent an empty secret when the env var was missing.
+   - Fix: `deploy/cloud/vercel/middleware.ts` + `torquecode-proxy-headers.mjs`.
+     - The client IP comes only from `ipAddress(request)` (`@vercel/functions`).
+     - All client forwarding/identity headers and any client-sent `x-torquecode-proxy` are deleted.
+     - `x-real-ip` and `x-forwarded-for` are set to that one IP, and the secret is added.
+     - It fails closed (503 with no secret, 400 with no valid IP).
+   - Test: `node --test deploy/cloud/vercel/torquecode-proxy-headers.test.mjs` passes 4/4 (spoofed values gone, IP not appended to a spoofed chain, cookie/origin kept, fail-closed cases, input not mutated).
+   - Limitations:
+     - `middleware.ts` wasn't type-checked or run on Vercel (`@vercel/functions` isn't a repo dependency; Akshit adds it with the files).
+     - Vercel's docs don't explicitly say that middleware-modified request headers reach an **external** rewrite destination; README checklist items 8–9 verify this live.
+4. **Not deployment-ready.** Nothing has run on a VM, Caddy with ACME, systemd, ufw or Vercel. `TRUST_PROXY` (Karthik, K11) is still a blocker.
