@@ -12,7 +12,7 @@ import { pyLiteral } from '../../generation/template.js';
 import { createValidationEngine } from '../../generation/validate.js';
 import { createDockerRunner } from '../../runner/dockerRunner.js';
 
-const profile: CandidateProfile = { domain: 'backend', domain_confidence: 1, claimed_topics: ['arrays', 'hashing'], tech_stack: ['python', 'fastapi'], skills: ['rest-apis'] };
+const profile: CandidateProfile = { domain: 'backend', domain_confidence: 1, claimed_topics: ['arrays', 'hashing', 'sliding_window'], tech_stack: ['python', 'fastapi'], skills: ['rest-apis'] };
 const lane: FocusLane = { domain: 'backend', skills: ['rest-apis'], topics: ['arrays'] };
 const REFERENCE = `def busiest_hour(counts: list[int]) -> int:
     """Index of the first hour with the most requests; -1 when there are no hours."""
@@ -115,6 +115,23 @@ describe('bug-derived hint ladder', () => {
 });
 
 describe('generator control flow (mocked chat, no runner)', () => {
+  it('does not return fallback questions using unclaimed topics', async () => {
+    const down = mockChat([{ kind: 'unavailable', code: 'LLM_UNAVAILABLE', message: 'not configured' }]);
+    const result = await generator({ chat: down.chat })({
+      profile: { ...profile, claimed_topics: ['arrays'] }, focus_lane: lane, progress: () => {},
+    }, ctx());
+    expect(result.kind).toBe('unavailable');
+  });
+
+  it('finds a compatible reviewed fallback beyond the first seed', async () => {
+    const bank = await loadSeedBank();
+    const compatible = structuredClone(bank.master![0]!);
+    const incompatible = { ...structuredClone(compatible), dsa_topics: ['graphs' as const] };
+    const down = mockChat([{ kind: 'unavailable', code: 'LLM_UNAVAILABLE', message: 'not configured' }]);
+    const result = await run(generator({ chat: down.chat, seedBank: async () => ({ ...bank, master: [incompatible, compatible] }) }));
+    expect(result.kind === 'ok' && result.value.master.dsa_topics).toEqual(compatible.dsa_topics);
+  });
+
   it('provider down: every tier falls back to the reviewed seed, no retries, Master costs no call', async () => {
     const down = mockChat([{ kind: 'unavailable', code: 'SANDBOX_UNAVAILABLE', message: 'LLM unavailable: not_configured' }]);
     const progress: GenerationProgress[] = [];

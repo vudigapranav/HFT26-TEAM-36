@@ -1,5 +1,5 @@
 // Manual live check (spends real Featherless credit; never run by `pnpm test`):
-//   pnpm gen:smoke    one real generateAssessment for tests/fixtures/portfolios/normal-web.json
+//   pnpm gen:smoke    one real generateAssessment for the demo portfolio (all seed topics claimed)
 // Real model (shared R4 client), real R3 runner, real K5 validator. Capped by LLM_EVAL_CAP_USD
 // (default 0.20). Prints metadata and gate outcomes only, never the reference or hidden tests.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -18,7 +18,7 @@ const PRICE = { input: 0.125, output: 0.45 };
 const CAP_USD = Number(process.env.LLM_EVAL_CAP_USD ?? '0.20');
 
 async function main() {
-  const parsed = parsePortfolio(JSON.parse(readFileSync('tests/fixtures/portfolios/normal-web.json', 'utf8')));
+  const parsed = parsePortfolio(JSON.parse(readFileSync(process.env.GEN_SMOKE_PORTFOLIO || '../../docs/demo/demo-portfolio.json', 'utf8')));
   if (parsed.kind !== 'ok' || 'errors' in parsed.value) throw new Error('fixture portfolio did not parse');
   const profile = parsed.value as CandidateProfile;
   const calls: LogEvent[] = [];

@@ -156,7 +156,8 @@ export function createGenerator(deps: GeneratorDeps): Ports['generateAssessment'
   async function generateTier(tier: Tier, profile: CandidateProfile, lane: FocusLane, context: Context, progress: (e: GenerationProgress) => void): Promise<TierResult | null> {
     const claimed = (lane.topics.length ? lane.topics : profile.claimed_topics).filter(t => profile.claimed_topics.includes(t));
     const fallback = async (reason: string, attempts: number): Promise<TierResult | null> => {
-      const seed = (await deps.seedBank())[tier]?.[0];
+      const seed = (await deps.seedBank())[tier]?.find(task =>
+        task.tier === tier && task.dsa_topics.every(topic => profile.claimed_topics.includes(topic)));
       log({ event: 'generation_tier', tier, outcome: seed ? 'seed_fallback' : 'no_task', reason, attempts });
       progress({ assessment_id: 'pending', status: seed ? 'ready' : 'failed', tier });
       return seed ? { task: seed, generated: false, attempts, reason } : null;
