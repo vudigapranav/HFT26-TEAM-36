@@ -81,6 +81,163 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
   expect(events.rows.map(e=>e.type)).toEqual(expect.arrayContaining(['assistant_message','hint_served','run','submit']));
   expect((await pool.query('SELECT status,source FROM generation_jobs WHERE assessment_id=$1',[id])).rows[0]).toEqual({status:'ready',source:'seed_bank'});
  });
+ it('K8 completes all three question sets and retains claims and report across restart',async()=>{
+  await app.close();
+
+  // Keep this integration fixture deterministic, independent of paid LLMs.
+  const fallback:Ports['generateAssessment']=async()=>({
+   kind:'unavailable',
+   code:'NOT_IMPLEMENTED',
+   message:'K8 deterministic seed-bank fixture',
+  });
+  app=await start({generateAssessment:fallback});
+
+  // Real cookie authentication, portfolio parsing and quiz.
+  const cookie=await account('k8@example.org');
+  const uploaded=await call('POST','/portfolio',cookie,portfolio);
+  expect(uploaded.statusCode).toBe(200);
+  const originalTopics:string[]=uploaded.json().profile.claimed_topics;
+
+  const quiz=await call('GET','/onboarding-quiz',cookie);
+  expect(quiz.statusCode).toBe(200);
+  const answers=quiz.json().questions.map(
+   (q:{id:string;options:{id:string}[]})=>({
+    question_id:q.id,option_id:q.options[0]!.id
+   })
+  );
+  expect((await call('POST','/onboarding-quiz',cookie,{answers})).statusCode).toBe(200);
+
+  const created=await call('POST','/assessments',cookie,{});
+  expect(created.statusCode).toBe(201);
+  const id:string=created.json().assessment_id;
+  const base=`/assessments/${id}`;
+
+  let ready:any;
+  for(let i=0;i<80;i++){
+   const response=await call('GET',`${base}/status`,cookie);
+   if(response.json().generation?.status==='ready'){
+    ready=response.json();
+    break;
+   }
+   await new Promise(resolve=>setTimeout(resolve,50));
+  }
+  expect(ready).toBeDefined();
+  expect(ready.generation.source).toBe('seed_bank');
+  const expiresAt=ready.expires_at;
+
+  // Set 1: autosave, run, and submit every offered question.
+  const firstSet:string[]=ready.available_task_ids;
+  expect(firstSet.length).toBeGreaterThan(0);
+  const editable=bank.novice![0]!.reference_files;
+
+  expect((await call('PUT',
+   `${base}/tasks/${firstSet[0]}/files`,
+   cookie,{files:editable}
+  )).statusCode).toBe(200);
+
+  expect((await call('POST',
+   `${base}/tasks/${firstSet[0]}/run`,cookie,{}
+  )).statusCode).toBe(200);
+
+  for(const q of firstSet){
+   expect((await call('POST',
+    `${base}/tasks/${q}/submit`,cookie,{}
+   )).statusCode).toBe(200);
+  }
+
+  expect((await call('GET',`${base}/status`,cookie))
+   .json().unlock_available).toBe(true);
+
+  // Unlock Set 2 and use the guarded assistant and hint.
+  const secondUnlock=await call('POST',`${base}/tier/upgrade`,cookie,{});
+  expect(secondUnlock.statusCode).toBe(200);
+  expect(secondUnlock.json().unlocks_used).toBe(1);
+
+  const firstIds=new Set(firstSet);
+  const secondSet:string[]=secondUnlock.json()
+   .available_task_ids.filter((q:string)=>!firstIds.has(q));
+  expect(secondSet.length).toBeGreaterThan(0);
+
+  const hint=await call('POST',`${base}/hint`,cookie,{
+   task_id:secondSet[0]
+  });
+  expect(hint.statusCode).toBe(200);
+
+  const assistant=await call('POST',`${base}/assistant`,cookie,{
+   task_id:secondSet[0],
+   message:'What should I inspect when debugging duplicate counts?'
+  });
+  expect(assistant.statusCode).toBe(200);
+  expect(assistant.json().blocked).toBe(false);
+
+  for(const q of secondSet){
+   expect((await call('POST',
+    `${base}/tasks/${q}/submit`,cookie,{}
+   )).statusCode).toBe(200);
+  }
+
+  // Unlock and submit Set 3.
+  const thirdUnlock=await call('POST',`${base}/tier/upgrade`,cookie,{});
+  expect(thirdUnlock.statusCode).toBe(200);
+  expect(thirdUnlock.json().unlocks_used).toBe(2);
+  expect(thirdUnlock.json().expires_at).toBe(expiresAt);
+
+  const previous=new Set([...firstSet,...secondSet]);
+  const thirdSet:string[]=thirdUnlock.json()
+   .available_task_ids.filter((q:string)=>!previous.has(q));
+  expect(thirdSet.length).toBeGreaterThan(0);
+
+  for(const q of thirdSet){
+   expect((await call('POST',
+    `${base}/tasks/${q}/submit`,cookie,{}
+   )).statusCode).toBe(200);
+  }
+
+  expect((await call('POST',
+   `${base}/tier/upgrade`,cookie,{}
+  )).statusCode).toBe(409);
+
+  // A later portfolio must not rewrite assessment-time claims.
+  const changed=await call('POST','/portfolio',cookie,{
+   ...(portfolio as object),
+   dsa_topics_solved:['graphs']
+  });
+  expect(changed.statusCode).toBe(200);
+
+  const reportPath=`/reports/report-${id}`;
+  const before=await call('GET',reportPath,cookie);
+  expect(before.statusCode).toBe(200);
+  const report=before.json();
+  expect(report.tasks.length).toBeGreaterThanOrEqual(3);
+  expect(report.claims.map((c:{topic:string})=>c.topic))
+   .toEqual(originalTopics);
+  expect(report.final_score).toEqual(expect.any(Number));
+
+  // Restart the backend against the SAME PostgreSQL database.
+  await app.close();
+  app=await start({generateAssessment:fallback});
+
+  const status=await call('GET',`${base}/status`,cookie);
+  expect(status.json()).toMatchObject({
+   status:'active',
+   unlocks_used:2,
+   expires_at:expiresAt
+  });
+
+  const after=await call('GET',reportPath,cookie);
+  expect(after.statusCode).toBe(200);
+  expect(after.json()).toEqual(report);
+
+  const evidence=await pool.query(
+   'SELECT type FROM events WHERE assessment_id=$1',[id]
+  );
+  const types:string[]=evidence.rows.map(r=>r.type);
+  expect(types.filter(t=>t==='tier_unlocked')).toHaveLength(2);
+  expect(types).toEqual(expect.arrayContaining([
+   'run','submit','hint_served','assistant_message'
+  ]));
+ });
+
  it('recovers expiration exactly once and lists only the caller’s durable reports',async()=>{
   const cookie=await account();const id=await create(cookie);const other=await account('other@example.org');
   await call('GET',`/reports/report-${id}`,cookie);
