@@ -95,6 +95,8 @@ async function assessmentId(page){return await page.evaluate(()=>sessionStorage.
 
 const browser=await chromium.launch();
 const context=await browser.newContext({viewport:{width:1440,height:960}});
+// THEME=dark runs the whole journey in the dark theme (visual check).
+if(process.env.THEME)await context.addInitScript(theme=>{try{localStorage.setItem('torque-theme',theme)}catch{}},process.env.THEME);
 const page=await context.newPage();
 const consoleErrors=[];
 page.on('console',m=>{if(m.type()==='error')consoleErrors.push(m.text());});
