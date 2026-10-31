@@ -1,0 +1,7 @@
+{
+  "_note": "For Akshit: src/frontend/vercel.json (his folder). Replace <backend-host>. /api is rewritten same-origin, so no CORS. The X-TorqueCode-Proxy header is added by middleware.ts (see deploy/cloud/README.md), never by the browser.",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://<backend-host>/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
