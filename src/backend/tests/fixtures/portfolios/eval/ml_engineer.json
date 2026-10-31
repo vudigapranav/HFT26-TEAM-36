@@ -1,0 +1,36 @@
+{
+  "candidate": {
+    "name": "Arjun Rao",
+    "email": "ml.engineer@example.com"
+  },
+  "projects": [
+    {
+      "name": "CleanBatch",
+      "description": "Data preprocessing pipeline that cleans tabular datasets before model training.",
+      "tech_stack": [
+        "python",
+        "pandas",
+        "numpy",
+        "scikit-learn"
+      ],
+      "role": "ML engineer",
+      "highlights": [
+        "Computed per-batch statistics and aggregated feature columns",
+        "Removed duplicate records from training datasets",
+        "Ranked features by importance score"
+      ]
+    }
+  ],
+  "tech_stack": [
+    "python"
+  ],
+  "skills": [
+    "machine-learning",
+    "data-analysis"
+  ],
+  "dsa_topics_solved": [
+    "arrays",
+    "hashing",
+    "sorting"
+  ]
+}

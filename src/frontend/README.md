@@ -4,7 +4,7 @@ The complete local frontend converted to Vite + React + TypeScript, React Router
 
 ## Run
 
-> **Imported into the repo on 2026-10-31 (branch `pranav/frontend-import`).** This folder is now part of the pnpm workspace; `package-lock.json` was removed and the dependencies live in the root `pnpm-lock.yaml`. Live-mode integration with the current backend is tracked in `docs/prompts/now/FRONTEND_INTEGRATION.md`. Statements below about the standalone preview describe the zip as received.
+> **Imported into the repo on 2026-10-31 (branch `pranav/frontend-import`).** This folder is now part of the pnpm workspace; `package-lock.json` was removed and the dependencies live in the root `pnpm-lock.yaml`. Live-mode integration with the current backend is verified by `tests/e2e/journey.mjs`. Statements below about the standalone preview describe the zip as received.
 
 From the repo root run `pnpm install --frozen-lockfile --ignore-scripts`, then `pnpm --filter torquecode-frontend dev`. Use Node 24. The server uses port 4177.
 

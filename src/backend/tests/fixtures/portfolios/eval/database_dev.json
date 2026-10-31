@@ -1,0 +1,33 @@
+{
+  "candidate": {
+    "name": "Divya Nair",
+    "email": "database.dev@example.com"
+  },
+  "projects": [
+    {
+      "name": "StockLedger",
+      "description": "Inventory database for a warehouse with daily stock reports.",
+      "tech_stack": [
+        "postgresql",
+        "django"
+      ],
+      "role": "Database developer",
+      "highlights": [
+        "Designed tables for stock levels per SKU",
+        "Wrote aggregation queries that summarize daily inventory movements into reports"
+      ]
+    }
+  ],
+  "tech_stack": [
+    "python",
+    "sql"
+  ],
+  "skills": [
+    "sql",
+    "database-design"
+  ],
+  "dsa_topics_solved": [
+    "arrays",
+    "sorting"
+  ]
+}

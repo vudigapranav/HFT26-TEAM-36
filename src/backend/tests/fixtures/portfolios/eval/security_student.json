@@ -1,0 +1,37 @@
+{
+  "candidate": {
+    "name": "Meera Iyer",
+    "email": "security.student@example.com"
+  },
+  "projects": [
+    {
+      "name": "LogSentinel",
+      "description": "Log analysis tool that parses SSH authentication logs and raises alerts on brute-force login attempts.",
+      "tech_stack": [
+        "python",
+        "flask",
+        "sqlite"
+      ],
+      "role": "Security engineer",
+      "highlights": [
+        "Parsed failed login events from auth logs",
+        "Detected bursts of failed logins with a sliding window over timestamps",
+        "Grouped alerts by source IP using hash maps"
+      ]
+    }
+  ],
+  "tech_stack": [
+    "python",
+    "bash"
+  ],
+  "skills": [
+    "network-security",
+    "linux"
+  ],
+  "dsa_topics_solved": [
+    "arrays",
+    "hashing",
+    "sliding window",
+    "strings"
+  ]
+}

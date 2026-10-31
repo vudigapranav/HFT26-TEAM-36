@@ -56,9 +56,9 @@ export class PostgresAssessmentStore extends AssessmentStore {
     const events = await client.query('SELECT * FROM events WHERE assessment_id=$1 ORDER BY ordinal', [row.id]);
     const runs = await client.query('SELECT result FROM runs WHERE assessment_id=$1 ORDER BY ts,run_id', [row.id]);
     const job = await client.query('SELECT status,progress,receipts,source FROM generation_jobs WHERE assessment_id=$1', [row.id]);
-    const originalProfile = await client.query('SELECT profile FROM portfolios WHERE id=$1 AND user_id=$2', [row.profile_id,userId]);
+    const originalProfile = await client.query('SELECT profile,portfolio FROM portfolios WHERE id=$1 AND user_id=$2', [row.profile_id,userId]);
     const record: AssessmentRecord = {
-     profile_snapshot: originalProfile.rows[0]?.profile, focus_snapshot: row.focus_lane,
+     profile_snapshot: originalProfile.rows[0]?.profile, portfolio_snapshot: originalProfile.rows[0]?.portfolio, focus_snapshot: row.focus_lane,
      session: { id: row.id, user_id: row.user_id, current_tier: row.current_tier, status: row.status, started_at: row.started_at.toISOString(), expires_at: row.expires_at.toISOString() },
      profile_id: row.profile_id, task: current.task, files: current.files, hint_level: current.hint_level,
      question_sets: sets, tier_work: Object.fromEntries(TIER_ORDER.filter(t => sets[t]?.length).map(t => [t,sets[t]![0]])),
@@ -116,7 +116,7 @@ export class PostgresAssessmentStore extends AssessmentStore {
    if (unit.signatures.get(record.session.id) === this.signature(record)) continue;
    const { session } = record;
    await client.query(`INSERT INTO assessments(id,user_id,profile_id,current_tier,unlocks_used,started_at,expires_at,status,auto_submit_error,expired_finalized,focus_lane)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO UPDATE SET current_tier=$4,unlocks_used=$5,status=$8,auto_submit_error=$9,expired_finalized=$10 WHERE assessments.user_id=$2`,
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO UPDATE SET current_tier=$4,unlocks_used=$5,started_at=$6,expires_at=$7,status=$8,auto_submit_error=$9,expired_finalized=$10 WHERE assessments.user_id=$2`,
     [session.id,userId,record.profile_id ?? unit.profileId,session.current_tier,TIER_ORDER.indexOf(session.current_tier),session.started_at,session.expires_at,session.status,record.auto_submit_error ?? null,record.events.some(e => e.type==='session_end'), record.focus_snapshot]);
    const taskIds = TIER_ORDER.flatMap(t => (record.question_sets?.[t] ?? []).map(w=>w.task.task_id));
    await client.query('DELETE FROM assessment_tasks WHERE assessment_id=$1 AND NOT(task_id=ANY($2::text[]))', [session.id,taskIds]);

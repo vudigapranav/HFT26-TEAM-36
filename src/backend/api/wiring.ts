@@ -11,6 +11,7 @@ import { DEFAULT_RUNNER_IMAGE } from './runner-status.js';
 import { createDevPorts } from './dev-stubs.js';
 import { chat } from '../llm/featherless.js';
 import { createValidationEngine } from '../generation/validate.js';
+import { withReceiptCache } from '../generation/receipts.js';
 import { createGenerator } from '../generation/generate.js';
 import { loadSeedBank } from './seed-bank.js';
 
@@ -30,7 +31,8 @@ export function createWiredPorts(seed: PrivateTask, overrides: Partial<Ports> = 
       };
     }, ...overrides };
   const validateTask =
-    overrides.validateTask ?? createValidationEngine(wired.runTests);
+    // Verified receipts are reused only for byte-identical tasks under the same policy, code, harness and runner.
+    overrides.validateTask ?? withReceiptCache(createValidationEngine(wired.runTests));
 
   return {
     ...wired,

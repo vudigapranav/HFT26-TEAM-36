@@ -1,0 +1,35 @@
+{
+  "candidate": {
+    "name": "Karan Mehta",
+    "email": "api.developer@example.com"
+  },
+  "projects": [
+    {
+      "name": "RateGate",
+      "description": "API gateway that enforces per-client rate limits and reports request traffic.",
+      "tech_stack": [
+        "go",
+        "redis",
+        "postgresql"
+      ],
+      "role": "Backend developer",
+      "highlights": [
+        "Implemented rate limiting with request quotas per API key",
+        "Built dashboards of per-minute request counts and error rates for SLO monitoring"
+      ]
+    }
+  ],
+  "tech_stack": [
+    "go",
+    "sql"
+  ],
+  "skills": [
+    "rest-apis",
+    "microservices"
+  ],
+  "dsa_topics_solved": [
+    "arrays",
+    "hashing",
+    "sliding window"
+  ]
+}

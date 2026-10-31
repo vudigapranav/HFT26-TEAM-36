@@ -91,6 +91,12 @@ export function parsePortfolioDetailed(input: unknown): DetailedProfile | Portfo
   };
 }
 
+/** The same capped, contract-checked portfolio the profile was built from, or null if it doesn't validate. */
+export function validPortfolio(input: unknown): Portfolio | null {
+  const capped = capInput(input, []);
+  return Value.Check(Portfolio, capped) ? capped as Portfolio : null;
+}
+
 // Seam signature from contracts/seams.ts (Ports.parsePortfolio).
 export function parsePortfolio(input: unknown): SeamResult<CandidateProfile | PortfolioErrors> {
   const r = parsePortfolioDetailed(input);

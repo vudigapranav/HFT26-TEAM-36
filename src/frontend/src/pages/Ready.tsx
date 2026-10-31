@@ -4,9 +4,10 @@ import type {AssessmentState,Generation} from '../types';
 import {failed,generating,neutral,POLL_MS,releasable,SOURCES,STAGES} from '../assessment';
 import {api,Button,Chips,ErrorNotice,Icon,PageTitle,Steps,storedAssessment,useApp,type Problem} from '../lib';
 import {preloadEditor} from '../editor-loader';
+import {enterFullscreen,fullscreenSupported} from '../integrity';
 
 export default function Ready(){const {focus,user,setAssessment}=useApp(),navigate=useNavigate();
- const [busy,setBusy]=useState(false),[error,setError]=useState<unknown>(null),[state,setState]=useState<AssessmentState|null>(null),[active,setActive]=useState(false);
+ const [busy,setBusy]=useState(false),[error,setError]=useState<unknown>(null),[state,setState]=useState<AssessmentState|null>(null),[active,setActive]=useState(false),[entry,setEntry]=useState(false),[fsRefused,setFsRefused]=useState(false);
  const poll=useRef<ReturnType<typeof setTimeout>|null>(null);
  const stored=storedAssessment(user?.user_id);
  useEffect(()=>()=>{if(poll.current)clearTimeout(poll.current)},[]);
@@ -31,8 +32,9 @@ export default function Ready(){const {focus,user,setAssessment}=useApp(),naviga
   {gen&&<Progress generation={gen} startedAt={state?.started_at}/>}
   {active&&<div className="alert" role="alert"><div><strong>You already have an active assessment.</strong>{stored?<p>Pick up where you left off. Your timer kept running.</p>:<p>It was started in another browser, so it can’t be reopened here. It ends when its 60-minute timer runs out.</p>}</div></div>}
   <ErrorNotice error={error}/>
-  <div className="button-row" style={{marginTop:28}}>{active&&stored?<Button onClick={()=>void resume()} busy={busy}>Resume assessment<Icon/></Button>:<Button onClick={()=>void start()} busy={busy} disabled={!!gen&&!failed(state!)}>{busy?(gen?STAGES[gen.status]:'Starting your assessment'):'Start 60-minute assessment'}<Icon/></Button>}<Button className="outline" disabled={busy} onClick={()=>navigate('/portfolio')}>Review portfolio</Button></div>
+  <div className="button-row" style={{marginTop:28}}>{active&&stored?<Button onClick={()=>void resume()} busy={busy}>Resume assessment<Icon/></Button>:<Button onClick={()=>{setFsRefused(false);setEntry(true);}} busy={busy} disabled={!!gen&&!failed(state!)}>{busy?(gen?STAGES[gen.status]:'Starting your assessment'):'Start 60-minute assessment'}<Icon/></Button>}<Button className="outline" disabled={busy} onClick={()=>navigate('/portfolio')}>Review portfolio</Button></div>
   {!active&&stored&&!busy&&<button className="text-button" style={{marginTop:20}} onClick={()=>void resume()}>Resume existing assessment ↗</button>}
+  {entry&&<div className="integrity-modal" role="dialog" aria-modal="true" aria-labelledby="entry-title"><div className="panel integrity-card"><span className="eyebrow muted">BEFORE YOU START</span><h2 id="entry-title">A focused, 60-minute session.</h2><ul className="entry-list"><li>The assessment opens in fullscreen. Esc and your usual shortcuts keep working.</li><li>Switching tabs, leaving the window or exiting fullscreen is recorded and shown in your integrity report. Nothing else is monitored: no camera, microphone or screen recording.</li><li>Your code saves automatically. The timer starts when your questions are ready.</li></ul>{fsRefused&&<p className="small" role="alert">Your browser didn't allow fullscreen. You can still start; the workspace offers an Enter fullscreen button.</p>}<div className="button-row"><Button className="outline" onClick={()=>setEntry(false)}>Not yet</Button>{fullscreenSupported()&&!fsRefused?<Button autoFocus onClick={async()=>{const ok=await enterFullscreen();if(!ok){setFsRefused(true);return;}setEntry(false);void start();}}>Enter fullscreen and start <Icon/></Button>:<Button autoFocus onClick={()=>{setEntry(false);void start();}}>Start without fullscreen <Icon/></Button>}</div></div></div>}
   <figure className="ready-art"><img src="/landing/assets/assessment.svg" alt="TorqueCode coding workspace illustration"/><figcaption>YOUR NEXT WORKSPACE</figcaption></figure></div></div></section>}
 
 function Progress({generation,startedAt}:{generation:Generation;startedAt?:string}){

@@ -6,7 +6,8 @@ import { Id, ApiError, AssessmentState, AssistantResponse, CandidateTask, Events
 import type { File, Tier } from '@torquecode/contracts';
 import type { Event, InternalRunResult, PrivateTask, SeamResult } from '../contracts/internal.js';
 import type { Ports } from '../contracts/seams.js';
-import { parsePortfolioDetailed } from '../intake/portfolio.js';
+import { parsePortfolioDetailed, validPortfolio } from '../intake/portfolio.js';
+import { extractEvidence, type PortfolioEvidence } from '../intake/evidence.js';
 import { hashEditableFiles } from '../scoring/aie.js';
 import { AssessmentStore, type AssessmentRecord, type TierWork } from './assessment-store.js';
 import type { RunnerStatus } from './runner-status.js';
@@ -226,6 +227,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       await store.withGenerationClaim(pending.id,async()=>{
         let profile: import('../contracts/internal.js').CandidateProfile|undefined;
         let focus: import('../contracts/internal.js').FocusLane|undefined;
+        let evidence: PortfolioEvidence|undefined;
         let fallbackTasks:PrivateTask[]=[];
         let revalidate=false;
         await store.withUser(pending.user_id,pending.id,async()=>{
@@ -233,6 +235,9 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
           if(!record?.generation || record.session.status!=='active' || (record.generation.status==='ready'&&certified(record)))return;
           profile=record.profile_snapshot??store.profiles.get(pending.user_id)?.profile;
           focus=record.focus_snapshot;
+          // Evidence comes from the immutable portfolio row this assessment started with, never a later upload.
+          const portfolio=validPortfolio(record.portfolio_snapshot);
+          if(portfolio&&profile)evidence=extractEvidence(portfolio,profile.claimed_topics);
           fallbackTasks=TIER_ORDER.flatMap(t=>works(record,t).map(w=>structuredClone(w.task)));
           revalidate=record.generation.status==='ready'||record.generation.progress.revalidate_existing===true;
           record.generation.status='validating';
@@ -256,7 +261,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
         // but never turns an unchecked fallback into a passing assessment.
         try { checked=await verify(fallbackTasks); } catch { /* unverified */ }
         if(!revalidate && !signal.aborted)try{
-          const result=await bounded(ports.generateAssessment({profile,focus_lane:focus??{domain:profile.domain,topics:profile.claimed_topics,skills:profile.skills},progress:()=>{}},{signal}),signal);
+          const result=await bounded(ports.generateAssessment({profile,focus_lane:focus??{domain:profile.domain,topics:profile.claimed_topics,skills:profile.skills},...(evidence?{evidence}:{}),progress:()=>{}},{signal}),signal);
           if(result.kind==='ok'){
             const tasks=TIER_ORDER.map(t=>result.value[t]);
             if(tasks.every((task,i)=>task.tier===TIER_ORDER[i])){
@@ -281,6 +286,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
             for(const task of checked.tasks){const work={task:structuredClone(task),files:structuredClone(task.files),hint_level:0};record.question_sets[task.tier]=[work];record.tier_work[task.tier]=work;}
             const first=record.question_sets.novice![0]!;record.task=first.task;record.files=first.files;
           }
+          if(!revalidate){const released=now();record.session.started_at=new Date(released).toISOString();record.session.expires_at=new Date(released+3600000).toISOString();}
           record.generation={status:'ready',source:checked.tasks.some(t=>t.source==='generated')?'generated':'seed_bank',progress:{verification_policy:VALIDATION_POLICY,semantic_verified:true},receipts:checked.receipts.slice(0,30).map(g=>({gate:g.gate,status:g.status,reason:g.reason.slice(0,300)}))};
         });
       });
@@ -452,12 +458,21 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       record.tier_work![tier] = record.question_sets[tier]![0]!;
     }
 
-    if (store.durable) { record.generation = { status: 'queued', progress: {}, receipts: [] }; record.profile_snapshot = structuredClone(stored.profile); record.focus_snapshot = structuredClone(stored.focus_lane ?? { domain: stored.profile.domain, skills: stored.profile.skills, topics: stored.profile.claimed_topics }); }
+    if (store.durable) { record.generation = { status: 'queued', progress: {}, receipts: [] }; record.profile_snapshot = structuredClone(stored.profile); record.portfolio_snapshot = structuredClone(stored.portfolio); record.focus_snapshot = structuredClone(stored.focus_lane ?? { domain: stored.profile.domain, skills: stored.profile.skills, topics: stored.profile.claimed_topics }); }
     store.assessments.set(record.session.id, record);
     reply.code(201);
     return state(record);
   });
   app.get('/assessments/:id/status', { schema: { response: { 200: AssessmentState, ...errors } } }, async request => state(await owned(request)));
+  // Candidate finishes early (button, or the 3rd tab switch): close the session through the same
+  // path as timer expiry, i.e. auto-submit saved files, session_end and the final report.
+  app.post('/assessments/:id/finish', { schema: { body: empty, response: { 200: AssessmentState, ...errors } } }, async request => {
+    const record = await owned(request);
+    active(record);
+    record.session.expires_at = new Date(Math.min(now(), Date.parse(record.session.expires_at))).toISOString();
+    await expire(record);
+    return state(record);
+  });
   app.post('/assessments/:id/tier/upgrade', {
     schema: { body: empty, response: { 200: AssessmentState, ...errors } },
   }, async request => {
@@ -642,7 +657,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     }
   });
 
-  app.post<{ Body: { events: { task_id: string; client_ts: string; type: 'tab_hidden' | 'tab_visible' | 'copy' | 'paste'; payload: { size?: number } }[] } }>('/assessments/:id/events', { schema: { body: EventsRequest, response: { 200: ok, ...errors } } }, async request => {
+  app.post<{ Body: { events: { task_id: string; client_ts: string; type: 'tab_hidden' | 'tab_visible' | 'copy' | 'paste' | 'window_blur' | 'fullscreen_exit' | 'page_reload'; payload: { size?: number; duration_ms?: number } }[] } }>('/assessments/:id/events', { schema: { body: EventsRequest, response: { 200: ok, ...errors } } }, async request => {
     const record = await owned(request); active(record);
     for (const event of request.body.events) {
       try { taskWork(record, event.task_id); }

@@ -30,9 +30,31 @@ export function normalizeTopics(raw: string[], tax: Taxonomy) {
   return { topics, warnings, usedFallback };
 }
 
+// Real portfolios write "React.js", "Tailwind CSS", "Spring Boot", "Machine Learning"; the rules use
+// react / tailwind / spring-boot / machine-learning. Canonicalize for matching only (display is unchanged).
+const DOMAIN_ALIASES: Record<string, string> = {
+  next: 'nextjs', 'tailwind-css': 'tailwind', tailwindcss: 'tailwind', 'rest-api': 'rest-apis', rest: 'rest-apis', restful: 'rest-apis',
+  'frontend-development': 'frontend', 'front-end': 'frontend', 'web-development': 'frontend',
+  'scikit': 'scikit-learn', 'tf': 'tensorflow', 'torch': 'pytorch', 'ai': 'machine-learning', 'ml-ops': 'machine-learning',
+  'burp': 'burp-suite', 'pen-testing': 'penetration-testing', 'ethical-hacking': 'penetration-testing', 'postgres-sql': 'postgresql',
+  'mongo': 'mongodb', 'golang': 'go', 'springboot': 'spring-boot', 'backend-development': 'microservices',
+};
+/** Each portfolio token resolves to at most ONE rule keyword (so "next.js" never counts as both next.js and nextjs). */
+export function domainTokens(tokens: Set<string>, keywords: Set<string>): Set<string> {
+  const out = new Set<string>();
+  for (const raw of tokens) {
+    const dashed = raw.toLowerCase().trim().replace(/[\s_]+/g, '-');
+    const forms = [raw, dashed, dashed.replace(/\.?js$/, ''), dashed.replace(/-?(?:framework|library)$/, '')];
+    const match = [...forms, ...forms.map(f => DOMAIN_ALIASES[f] ?? '')].find(f => f && keywords.has(f));
+    if (match) out.add(match);
+  }
+  return out;
+}
+
 export function detectDomain(tokens: Set<string>, rules: DomainRules) {
   const scores = { web: 0, ml: 0, security: 0, backend: 0 } as Record<Domain, number>;
-  for (const d of DOMAINS) for (const [kw, w] of Object.entries(rules.domains[d] ?? {})) if (tokens.has(kw)) scores[d] += w;
+  const canon = domainTokens(tokens, new Set(DOMAINS.flatMap(d => Object.keys(rules.domains[d] ?? {}))));
+  for (const d of DOMAINS) for (const [kw, w] of Object.entries(rules.domains[d] ?? {})) if (canon.has(kw)) scores[d] += w;
   const rank = (d: Domain) => { const i = rules.tie_break_order.indexOf(d); return i === -1 ? 99 : i; };
   const order = [...DOMAINS].sort((a, b) => scores[b] - scores[a] || rank(a) - rank(b));
   const top = order[0] as Domain;
@@ -44,7 +66,9 @@ export function detectDomain(tokens: Set<string>, rules: DomainRules) {
   }
   const lowConfidence = scores[top] < rules.thresholds.low_confidence_below_score
     || scores[top] - scores[second] < rules.thresholds.low_confidence_margin;
-  return { domain: top, confidence: Math.round((scores[top] / total) * 100) / 100, lowConfidence, scores,
+  // Share of the matched evidence, scaled by how much evidence there is: one weak keyword is not 100%.
+  const strength = Math.min(1, scores[top] / rules.thresholds.low_confidence_below_score);
+  return { domain: top, confidence: Math.round((scores[top] / total) * strength * 100) / 100, lowConfidence, scores,
     warning: lowConfidence ? `Domain "${top}" detected with low confidence.` : undefined };
 }
 

@@ -1,0 +1,36 @@
+{
+  "candidate": {
+    "name": "Sana Sheikh",
+    "email": "frontend.dev@example.com"
+  },
+  "projects": [
+    {
+      "name": "PlayBoard",
+      "description": "React leaderboard app for a college coding club with real-time score updates over websockets.",
+      "tech_stack": [
+        "react",
+        "typescript",
+        "tailwind"
+      ],
+      "role": "Frontend developer",
+      "highlights": [
+        "Rendered a live leaderboard ranking players by score",
+        "Handled real-time score events from a websocket stream"
+      ]
+    }
+  ],
+  "tech_stack": [
+    "javascript",
+    "typescript",
+    "html",
+    "css"
+  ],
+  "skills": [
+    "responsive-design",
+    "react-hooks"
+  ],
+  "dsa_topics_solved": [
+    "arrays",
+    "sorting"
+  ]
+}

@@ -9,6 +9,25 @@ import { createHash } from 'node:crypto';
 import type { AieScore, File } from '@torquecode/contracts';
 import type { Event, InternalRunResult, PrivateTask, SeamResult } from '../contracts/internal.js';
 
+/**
+ * Pass rate credited beyond the starter baseline. P2P tests pass on the untouched starter by design
+ * (K5 guarantees it), so they prove nothing on their own: submitting the starter unchanged scores 0.
+ * Falls back to the raw rate when the run doesn't match the task's F2P/P2P manifest.
+ */
+/** Tests credited beyond the starter baseline, out of the tests that need fixing (F2P). Same rule as creditedPassRate. */
+export function creditedCounts(passed: number, total: number, task: Pick<PrivateTask, 'f2p_ids' | 'p2p_ids'>): { passed: number; total: number } {
+  const baseline = task.p2p_ids?.length ?? 0, fixable = task.f2p_ids?.length ?? 0;
+  if (!fixable || baseline + fixable !== total) return { passed, total };
+  return { passed: Math.max(0, Math.min(fixable, passed - baseline)), total: fixable };
+}
+
+export function creditedPassRate(passed: number, total: number, task: Pick<PrivateTask, 'f2p_ids' | 'p2p_ids'>): number {
+  if (total <= 0) return 0;
+  const baseline = task.p2p_ids?.length ?? 0, fixable = task.f2p_ids?.length ?? 0;
+  if (!fixable || baseline + fixable !== total) return passed / total;
+  return Math.max(0, Math.min(1, (passed - baseline) / fixable));
+}
+
 export const AIE_H_MAX = 6;
 export const AIE_MAX = 20;
 export const HINT_WEIGHT = { 1: 1, 2: 2, 3: 3 } as const;
@@ -74,9 +93,9 @@ export function computeAie(events: Event[], runs: InternalRunResult[], task: Pri
   const ranBeforeSubmit = firstSubmit === undefined || runEvents.some(x => ts(x.e) < firstSubmit);
   const test_discipline = runEvents.length === 0 || !ranBeforeSubmit ? 0 : runs_after_change / runEvents.length;
 
-  // Rule 5: gate from the final submit over ALL tests.
+  // Rule 5: gate from the final submit, credited beyond the starter baseline (unchanged starter -> 0).
   const final = submits[submits.length - 1]?.r;
-  const finalPass = final && final.total > 0 ? final.passed / final.total : 0;
+  const finalPass = final ? creditedPassRate(final.passed, final.total, task) : 0;
   const gate = Math.min(1, finalPass / 0.5);
 
   const score = AIE_MAX * gate * (0.5 * independence + 0.3 * hint_yield + 0.2 * test_discipline);

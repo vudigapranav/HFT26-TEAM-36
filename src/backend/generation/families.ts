@@ -5,7 +5,9 @@ import { pyLiteral, renderTests, type Outcome } from './template.js';
 
 export const VALIDATION_POLICY='trusted-families-v1';
 export type FamilyId = 'request_peak_v1'|'second_largest_v1'|'event_dedupe_v1'|'session_window_v1'|'error_budget_v1'|'bucket_rollup_v1';
-export type ScenarioId = 'operations'|'reliability'|'analytics';
+export type ScenarioId = 'operations'|'reliability'|'analytics'|FeatureScenarioId;
+// Reviewed, fixed framings tied to portfolio features (catalogue.ts decides which families each one fits).
+export type FeatureScenarioId = 'order_events'|'inventory_updates'|'cart_totals'|'security_logs'|'alert_counts'|'api_traffic'|'rate_limits'|'dataset_batches'|'metric_rollups'|'leaderboard'|'realtime_streams';
 export type OracleCase = { module:string; func:string; args:unknown[]; outcome:Outcome };
 export type Family = {
   id:FamilyId; base:PrivateTask; contract:string; examples:OracleCase[]; cases:OracleCase[];
@@ -69,8 +71,14 @@ function secondTask():PrivateTask {
   return {task_id:'seed-second-largest',tier:'novice',domain:'backend',language:'python',task_type:'bug_fix',source:'seed_bank',title:'Second-largest distinct integer',statement_md:'Return the second-largest DISTINCT integer in nums, or None when fewer than two distinct integers exist. For [1, 2, 3], return 2. Only app/summary.py is editable.',dsa_topics:['arrays'],files:[starter],reference_files:[reference],tests,visible_tests:tests[0]!.ids.map(id=>({id,path:tests[0]!.path,content:tests[0]!.content})),f2p_ids:f2p,p2p_ids:p2p,hint_ladder:['Consider repeated values and the empty input.','Trace how the result changes when a new largest value arrives.','Track two distinct ranks rather than just one extremum.'],limits:{wall_time_ms:5000,memory_mb:128,cpu_count:1,pids:32,output_bytes:65536}};
 }
 const CONTEXT:Record<Domain,string>={backend:'a backend service',web:'a web application',security:'a security monitoring service',ml:'a deterministic data-analysis pipeline'};
-const SCENARIO:Record<ScenarioId,string>={operations:'operational reporting',reliability:'reliability monitoring',analytics:'batch analytics'};
-export const SCENARIOS=Object.freeze(Object.keys(SCENARIO) as ScenarioId[]);
+const SCENARIO:Record<ScenarioId,string>={operations:'operational reporting',reliability:'reliability monitoring',analytics:'batch analytics',
+  order_events:'repeated checkout and order events',inventory_updates:'inventory and stock-level updates',cart_totals:'shopping-cart line totals',
+  security_logs:'authentication and access-log events',alert_counts:'security and incident alert counts',api_traffic:'per-minute API request counts',
+  rate_limits:'request bursts checked against rate limits',dataset_batches:'dataset record batches before training',metric_rollups:'metric rollups for dashboards',
+  leaderboard:'leaderboard and ranking scores',realtime_streams:'real-time event streams'};
+// Legacy allowlist offered to the model without portfolio evidence; feature scenarios are offered only per family (catalogue.ts).
+export const SCENARIOS=Object.freeze(['operations','reliability','analytics'] as ScenarioId[]);
+export const ALL_SCENARIOS=Object.freeze(Object.keys(SCENARIO) as ScenarioId[]);
 export function statement(family:Family,domain:Domain,scenario:ScenarioId):string {
   return `Context: ${SCENARIO[scenario]} for ${CONTEXT[domain]}. This task uses Python, regardless of the portfolio's framework.\n\n${family.contract}\n\nVerified examples:\n`+family.examples.map((e,i)=>`${i+1}. ${e.func}(${e.args.map(pyLiteral).join(', ')}) returns ${e.outcome.kind==='value'?pyLiteral(e.outcome.value):e.outcome.exception}.`).join('\n');
 }
@@ -80,7 +88,7 @@ export function familyTask(family:Family,domain:Domain,scenario:ScenarioId='oper
 export function matchesContract(task:PrivateTask,family:Family):boolean {
   // Exact legacy reviewed statements remain accepted for existing seed snapshots.
   return (task.title===family.base.title&&task.statement_md===family.base.statement_md)
-    || (task.title===family.base.title&&SCENARIOS.some(s=>task.statement_md===statement(family,task.domain,s)));
+    || (task.title===family.base.title&&ALL_SCENARIOS.some(s=>task.statement_md===statement(family,task.domain,s)));
 }
 export function sameFiles(a:PrivateTask['files'],b:PrivateTask['files']):boolean {
   const sorted=(files:PrivateTask['files'])=>[...files].sort((x,y)=>x.path.localeCompare(y.path));

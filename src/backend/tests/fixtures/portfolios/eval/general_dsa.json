@@ -1,0 +1,30 @@
+{
+  "candidate": {
+    "name": "Vikram Shah",
+    "email": "general.dsa@example.com"
+  },
+  "projects": [
+    {
+      "name": "Practice",
+      "description": "Solutions to competitive programming problems.",
+      "tech_stack": [
+        "c++"
+      ],
+      "role": "Student",
+      "highlights": [
+        "Solved array and string problems"
+      ]
+    }
+  ],
+  "tech_stack": [
+    "c++"
+  ],
+  "skills": [
+    "problem-solving"
+  ],
+  "dsa_topics_solved": [
+    "arrays",
+    "strings",
+    "two pointers"
+  ]
+}

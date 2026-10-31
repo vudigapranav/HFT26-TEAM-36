@@ -124,7 +124,7 @@ K1 requires clean install/build/typecheck, all ten callable seams, real repeated
 
 ## Approved compatibility exception to the checkpoint prompts
 
-After reading `docs/prompts/KARTHIK_Codex_Prompts.md`, Karthik explicitly chose: “Keep the earlier approved K1 contracts and ship them, explicitly flagging the differences to Pranav and Rithvik.” The original approval applied to K1. On 2026-10-31 Karthik explicitly extended the same stack and contract decisions to K2; conflicting checkpoint defaults remain superseded.
+After reading the K1 checkpoint prompts (working notes, removed before submission), Karthik explicitly chose: “Keep the earlier approved K1 contracts and ship them, explicitly flagging the differences to Pranav and Rithvik.” The original approval applied to K1. On 2026-10-31 Karthik explicitly extended the same stack and contract decisions to K2; conflicting checkpoint defaults remain superseded.
 
 - Historical K1 scope: the original skeleton did not complete the newer K1a/K1b checkpoint sequence. K2 auth is documented separately below; checkpoint assessment endpoints and in-memory sessions remain outside this change.
 - Shared public package uses TypeBox `public.ts`, snake_case fields, and server-private `internal.ts`. It does not provide Zod `schemas.ts` or camelCase aliases.

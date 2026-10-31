@@ -79,7 +79,9 @@ it('drives real intake, quiz, immutable seed run/submit, hints and report withou
   expect(submitted.body).not.toContain('test_single_day');
   const report = await call('GET', `/reports/report-${id}`);
   expect(report.statusCode).toBe(200);
-  expect(report.json().tasks[0].passed).toBe(5);
+  // Report rows credit only tests fixed beyond the untouched starter (P2P already pass on it): the reference fixes every F2P test.
+  expect(report.json().tasks[0].passed).toBe(seed.f2p_ids.length);
+  expect(report.json().tasks[0].total).toBe(seed.f2p_ids.length);
   expect(report.json().tasks[0].aie).toBeNull(); // TODO(OPEN-Q4), no invented Novice AI score
   const state = store.assessments.get(id)!;
   expect(state.events.find(e => e.type === 'run')?.payload).toEqual({ run_id: run.json().run_id, files_hash: hashEditableFiles(seed.files) });
