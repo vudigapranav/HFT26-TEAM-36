@@ -3,7 +3,7 @@
 > **Team PAARK · `HFT26-TEAM-36` · CBIT Hacktoberfest '26**
 > Problem statement: **Portfolio-Driven Adaptive Coding & Technical Assessment Platform**
 
-🎥 **Demo video:** _TODO: add link_ · 🌐 **Live URL:** _TODO: add link_ · ▶️ **Run it locally:** `deploy/start.sh` then `pnpm web:serve` ([Setup](#-setup))
+📊 **Pitch deck:** [`docs/TorqueCode_Pitch.pptx`](docs/TorqueCode_Pitch.pptx) · 📖 **Product context:** [`docs/TorqueCode_Context.md`](docs/TorqueCode_Context.md) · ▶️ **Run it:** [Quick start](#-quick-start)
 
 ---
 
@@ -38,156 +38,119 @@ Coding assessments use static questions that ignore what a candidate has actuall
 
 TorqueCode is an **assessment** platform, not a learning platform: the report shows what the candidate knows, how well, and where they're weak.
 
+
 ## 🔁 How it works
 
-```
-Portfolio JSON ──► Onboarding quiz ──► 60-minute assessment ──────────────────────────► Report
- strict schema,     ~10 MCQs, picks     everyone starts on Novice questions; one timer      pass rates, time,
- topic normalizing, a focus lane only   no assistant       guarded AI assistant           AI efficiency score,
- domain detection   from claimed skills attempt every question → "Unlock next questions"  focus areas,
-                                        (max 2 unlocks; levels never named; no demotion)  integrity signals
-                                        Run = visible tests · Submit = visible + hidden
-```
+1. **Sign in** and upload your portfolio as **JSON or a text PDF** (the PDF is turned into JSON in your browser for you to check).
+2. A short **focus quiz** narrows what to test, only within the skills you claimed.
+3. **Questions are prepared** from your own projects: TorqueCode reads the features you describe (orders, logs, datasets, …), picks matching reviewed coding tasks that use only your claimed DSA topics, and verifies every task before you see it.
+4. **One 60-minute session** in fullscreen: everyone starts on the first question set; submit every question to unlock the next (at most two unlocks). Later sets add hints and a guarded AI assistant that never gives the answer.
+5. **Run** checks visible tests; **Submit** grades with hidden tests in an isolated Docker sandbox.
+6. The **report** shows tests fixed, time, hints, the AI-efficiency score, claims vs demonstrated, focus areas and integrity signals (tab switches, fullscreen exits, time away).
 
-1. **Portfolio intake.** Strict validation with field-level errors; DSA topics normalized to a fixed 19-topic taxonomy (typos and synonyms handled); size caps; all portfolio text treated as untrusted data, with prompt-injection phrases flagged.
-2. **Onboarding quiz.** A fixed MCQ bank (no LLM). The focus lane it picks is always a subset of what the portfolio claimed.
-3. **Three tiers in one 60-minute session.** Everyone starts at Novice. Tasks may only use the candidate's claimed DSA topics.
-4. **Deterministic grading.** Candidate code runs in an isolated Docker container against pytest suites. Hidden tests run only on Submit.
-5. **Report.** Per-task pass rates, time taken, hints used, the AI efficiency score with its breakdown, final outcome, focus areas and integrity signals.
+**Every grade comes from deterministic tests, never from an LLM.** The AI only chooses among pre-verified tasks and gives guarded hints.
 
 ## 🏗️ Architecture
 
 ```
-┌──────────────────────── FRONTEND (browser) ─────────────────────────┐
-│ Login · Portfolio upload · Onboarding quiz · Generation progress    │
-│ Coding environment (Monaco editor, file tabs, Run/Submit, console,  │
-│ tier bar, timer, assistant panel) · Report page                     │
-└───────────────┬─────────────────────────────────────────────────────┘
-                │ HTTPS · REST + JSON
-┌───────────────▼──────────── BACKEND PART A: CORE PLATFORM ──────────┐
-│ Auth · Portfolio intake · Session & timer (server-authoritative)    │
-│ Tier state machine · Execution runner (containers) · Grading        │
-│ Event logging · AIE score calculation · Report builder · Database   │
-└───────────────┬─────────────────────────────────────────────────────┘
-                │ internal calls (typed seams)
-┌───────────────▼──────────── BACKEND PART B: AI ENGINE ──────────────┐
-│ Featherless client (single queue) · Task generation pipeline        │
-│ Validation engine (deterministic) · Seed bank · Hint ladder         │
-│ Guarded assistant (input/output guards)                             │
-└─────────────────────────────────────────────────────────────────────┘
-                │
-        Featherless API (OpenAI-compatible) — key lives ONLY here
+Browser (React + Vite + Monaco)
+   │  /api/*  (same origin; Vercel rewrite in production)
+   ▼
+Fastify API (TypeScript) ── PostgreSQL 16
+   ├── Docker runner: Python 3.13 + pytest, split trusted grader / untrusted worker, no network
+   ├── K5 validation: independent oracles, reference ×3, starter regression, receipts cache
+   └── Featherless AI (Qwen): task selection from a verified shortlist + guarded assistant
 ```
 
-**Stack:** TypeScript (strict, ESM) on Node 24 · Fastify 5 · TypeBox shared contracts (`@torquecode/contracts`) · PostgreSQL 16 · Argon2id + HttpOnly cookie sessions · Docker sandbox running Python 3.13 + pytest · Featherless AI via the OpenAI-compatible API · pnpm workspace + uv. Full decisions: [`docs/BACKEND_DECISIONS.md`](docs/BACKEND_DECISIONS.md).
+## 🚀 Quick start
 
-## ✅ What's real today vs. what's next
+**You need:** Docker Desktop (running), Node.js 24.22.1+, git. pnpm is fetched automatically through `npx`.
 
-Merged into `main` and covered by tests:
+```bash
+git clone https://github.com/vudigapranav/HFT26-TEAM-36.git
+cd HFT26-TEAM-36
+```
 
-| Area | Status |
+**1. Add your own API keys (optional but recommended).** Create a `.env` file in the repo root. It is git-ignored; never commit it.
+
+```bash
+cp .env.example .env
+```
+
+Then fill in your own keys:
+
+| Variable | Needed for | Where to get it |
+| :--- | :--- | :--- |
+| `FEATHERLESS_API_KEY` | AI task selection and the guarded assistant | your account at [featherless.ai](https://featherless.ai) |
+| `E2B_API_KEY` | only if you run code in E2B cloud sandboxes instead of Docker (`RUNNER=e2b`) | your account at [e2b.dev](https://e2b.dev) |
+
+Without a Featherless key everything still works: questions fall back to the verified bank, hints still work, and the assistant shows a clear "unavailable" message.
+
+**2. Start the backend** (PostgreSQL in Docker, the sandbox image, database migrations, API on `127.0.0.1:3001`):
+
+```bash
+deploy/start.sh
+```
+
+**3. Start the website** (in a second terminal):
+
+```bash
+npx pnpm@11.25.0 web:serve
+```
+
+**4. Open** <http://127.0.0.1:4177/#/register>. Use `127.0.0.1`, not `localhost` (the backend only accepts that exact origin).
+
+| Task | Command |
 | :--- | :--- |
-| Email + password login (Argon2id, hashed opaque session tokens, origin checks, rate limits) | ✅ merged |
-| Portfolio intake: validation, topic normalization, domain detection, injection flags | ✅ merged |
-| Onboarding quiz with claimed-skills-only focus lane | ✅ merged |
-| Question sets in one 60-minute session: everyone starts on the first set; after submitting every question (right or wrong) the candidate may click "Unlock next questions", at most twice; levels are never named in the assessment API; earlier questions stay open (K10, PR #42) | ✅ merged |
-| Assessment API: server-side timer, autosave, Run, Submit, integrity events, auto-submit at expiry, neutral question IDs, locked sets refused (403) | ✅ merged |
-| Hints and the guarded assistant endpoint, only on later question sets (K10, PR #42; R5 guards, measured against the live model in R5-live) | ✅ merged; the assistant needs a Featherless key, otherwise it returns 503 |
-| Six reviewed Python task families (`generation/families.ts`): 2 Novice (request peak, second-largest distinct), 2 Adept multi-file features (event dedupe with hashing; bucket rollup, arrays only), 2 Master debugging tasks with a pinned performance workload (session window with sliding_window; error-budget spans, arrays only). Any portfolio that claims arrays reaches all three sets (#60, #63) | ✅ merged; seeds checked on the real Docker runner |
-| Docker sandbox runner with anti-tamper split-container grading (R2, R3) | ✅ merged |
-| Deterministic task validation engine: schema, claimed topics + reviewed implementation provenance, import allow-list, trusted grading template, pinned contract/examples, leakage, reference vs **independent TypeScript oracle** in 3 isolated runs, starter F2P/P2P, Master performance workload (K5, hardened in #60) | ✅ merged; every released task (generated or fallback) must be `semantic_verified` |
-| Task generation (K6, #54 → #60): the model only **selects** a reviewed family and scenario; contracts, code, tests and expected answers come from reviewed templates and oracles. Provider down → verified seed fallback, marked `seed_bank` | ✅ merged |
-| PostgreSQL persistence of profiles, assessments, files, runs, events, generation jobs and reports; restart-safe expiry; report history `GET /reports` (K11, #56) | ✅ merged |
-| AI efficiency score (context §12) and report builder that only counts unlocked question sets | ✅ merged |
-| One-command local deployment: PostgreSQL 16 in Compose, backend on the host, verify script (R6) | ✅ merged; verified on Windows and on Linux (31 Oct, below) |
-| React + Vite + Monaco frontend, live-only client of this API: auth, portfolio (JSON, or a text PDF that the browser drafts into JSON for the candidate to review before validation), quiz, generation progress with receipts, workspace (timer, autosave, Run/Submit, unlocks, hints/assistant on later sets), "Submit all questions", report with claims, past reports (#59) | ✅ merged; full browser journey passes against the real stack (below) |
+| Check the whole stack | `deploy/verify.sh` |
+| Restart after pulling changes | `deploy/start.sh --restart` |
+| Stop (data kept) | `deploy/stop.sh` |
+| Reset the local database | `deploy/stop.sh --purge --yes` |
+| Use E2B instead of Docker for grading | `npx pnpm@11.25.0 --filter @torquecode/backend e2b:template` once, then `RUNNER=e2b deploy/start.sh --restart` |
 
-**Claims vs demonstrated (P13):** reports include the assessment's claimed topics, the task that tested each one, and whether its final submission demonstrated that topic. Unattempted claims are explicitly marked untested. Claims are captured when the assessment starts, so re-uploading a portfolio does not rewrite earlier results.
+> If `deploy/start.sh` says a port or password problem, an old local database volume is usually the cause: run `deploy/stop.sh --purge --yes` and start again.
 
-**Verified on 31 Oct 2026 (cloud Linux box, Node 24.22.1, PostgreSQL 16, Docker runner, production frontend bundle):**
+## 🧪 Tests
 
-| Check | Result |
-| :--- | :--- |
-| `deploy/start.sh` → `/health` | `runner_available: true` |
-| `deploy/verify.sh --outage` (real HTTP: auth, portfolio, quiz, generation, Run/Submit in Docker, hint, report, cross-user 404s, Docker-down fails closed) | 33/33 checks passed |
-| `node src/frontend/tests/e2e/journey.mjs` (Chromium, steps a–j + b2: register/reload/sign-in, portfolio, PDF portfolio drafted and validated, quiz, receipts, 3 question sets with 2 unlocks, hint + assistant, 3rd unlock refused with 409, paste + reload restores timer/files, submit all, report with claims and integrity, past reports, portfolio without `arrays` gets a clear message) | 11/11 steps passed |
-| Frontend `pnpm --filter torquecode-frontend test` / `test:ui` | 26/26 · 53/53 |
-| Question preparation (generation + validation) before the first question appears | 52–90 s measured here (4 sequential Docker validations per task) |
-
-**Not finished yet:**
-- **Cloud deployment** (Vercel frontend + one VM): `src/frontend/vercel.json` + `middleware.ts` are in the repo; the VM kit is in `deploy/cloud/` and the runbook in [`docs/deploy/VERCEL_VM_RUNBOOK.md`](docs/deploy/VERCEL_VM_RUNBOOK.md). **Not deployed**: no VM hostname yet, so the `/api` rewrite still points at the `BACKEND_HOST` placeholder.
-
-**Future scope (pitch only, not built):** project-based assessments built around the candidate's own repositories, and camera-based proctoring.
-
-## 🚀 Setup
-
-**Run the whole website locally (what the demo uses).** Needs Docker running and Node 24.22.1+:
-
-```sh
-deploy/start.sh        # PostgreSQL 16 + runner image + migrations + backend on 127.0.0.1:3001
-pnpm web:serve         # production frontend on http://127.0.0.1:4177 (proxies /api to the backend)
+```bash
+npx pnpm@11.25.0 install --frozen-lockfile --ignore-scripts
+npx pnpm@11.25.0 typecheck
+npx pnpm@11.25.0 test                                   # backend (+ PostgreSQL/Docker suites when available)
+npx pnpm@11.25.0 --filter torquecode-frontend test       # frontend checks
+npx pnpm@11.25.0 --filter torquecode-frontend run test:ui
+node src/frontend/tests/e2e/journey.mjs                  # full browser journey against a running stack (needs Playwright)
 ```
 
-Open http://127.0.0.1:4177/landing/ (story) or http://127.0.0.1:4177/#/register (app). `pnpm web:dev` is the
-hot-reload dev server instead; `web:serve` is faster for demos because Monaco ships as one pre-built chunk.
-Optional: put `FEATHERLESS_API_KEY` in `.env` for the live assistant; without it hints still work and the assistant
-shows a clear "unavailable" message. Check the stack with `deploy/verify.sh`, and stop it with `deploy/stop.sh`.
-More in [`deploy/README.md`](deploy/README.md).
+## ☁️ Deployment
 
-Development, from the repository root (Node 24.22.1+, pnpm 11, uv, Python 3.13):
+Frontend on **Vercel** (project root `src/frontend`; `vercel.json` rewrites `/api/*` to the backend), backend + PostgreSQL + Docker sandbox on **one Ubuntu VM** with Caddy HTTPS (`deploy/cloud/setup-vm.sh`). API keys live only in the VM's `/etc/torquecode/backend.env`; Vercel only needs `TORQUECODE_PROXY_SECRET`. Details: [`deploy/cloud/README.md`](deploy/cloud/README.md).
 
-```sh
-pnpm install --frozen-lockfile --ignore-scripts
-uv sync --project src/backend --python 3.13 --locked
-pnpm typecheck
-pnpm test
-pnpm --filter torquecode-frontend test && pnpm --filter torquecode-frontend run test:ui
-BASE_URL=http://127.0.0.1:4177 node src/frontend/tests/e2e/journey.mjs   # needs the running stack + Playwright
-```
+## 🔒 Security and integrity
 
-Copy `.env.example` to `.env` for local secrets. `.env` is git-ignored; never commit keys.
+- Candidate code runs in fresh Docker containers: no network, non-root, read-only, CPU/memory/process/time/output limits; the trusted grader and the candidate's code run in separate containers.
+- Hidden tests, reference solutions and hint ladders never reach the browser.
+- The AI cannot write code, tests or answers; every released task passes independent verification first.
+- Integrity signals are browser-observed evidence for review, never an automatic verdict. No camera, microphone or screen recording.
+- Keys stay on the server, in `.env` or the VM's env file.
 
-## 🔒 Security and integrity design
+## ⚠️ Limitations
 
-- **Sandbox.** Each Run/Submit uses fresh containers, split in two: an untrusted **worker** with only the candidate's code, and a trusted **grader** with the tests. Candidate code never sees the test files, expected answers or the report. Both containers get `--network none`, memory/CPU/process (`--pids-limit`) limits, read-only root filesystem with a small `noexec` tmpfs, non-root user `10001`, `--cap-drop ALL`, `no-new-privileges`, wall-clock timeout with kill, capped output. The grade comes from the grader's own report stream, never from the candidate's exit code.
-- **Hidden tests never leave the server.** Run uses visible tests only; Submit adds hidden tests. The browser gets hidden-test aggregates only (no test code, names or expected output), and Submit stdout/stderr are discarded. Reference solutions and hint ladders are server-only; public responses are projected through explicit allow-lists.
-- **Candidates can only edit allow-listed files.** Test, config, unknown and path-traversal paths are rejected before the runner is called.
-- **Guarded assistant (Adept/Master).** Layered: the model never sees reference solutions or hidden tests; an input guard catches extraction attempts; a deterministic output guard limits code volume, blocks task-function redefinitions and, when given the reference through a server-side resolver, checks similarity to it. The reference never enters the model's context. Every reply and block is logged.
-- **AI efficiency score from logs only.** Up to 20% of the final score, computed deterministically from events (independence, hint yield, test discipline, gated by the final submit's pass rate). Blocked extraction attempts score 0 and are reported as integrity flags. An LLM outage emits no events, so it never counts as AI use.
-- **Integrity signals, not verdicts.** Tab switches and copy/paste (meant to be captured only inside the coding environment) are accepted by the events API, timestamped by the server, and counted in the report. They can't forge the run/submit events that scoring relies on.
-- **Featherless key** lives only in the backend's `.env`, and only `src/backend/llm/` calls the provider.
-
-## ⚠️ Honest limitations
-
-- TorqueCode verifies skills consistent with the portfolio, not authorship of the listed projects (it sees JSON, not repositories).
-- It can't stop AI use on another device; it logs integrity signals only. Camera proctoring is future scope.
-- Generated difficulty is approximate; different candidates get different tasks.
-- The sandbox is hackathon-grade, standard Docker isolation. Hidden-test **inputs** reach candidate code because it receives the arguments; only test source and expected outputs are secret. Production would need stronger isolation.
-- Assistant guards are heuristics, and AI hints can occasionally be wrong; hints are never used for grading.
-- Candidate code is **Python only** (Q7). The runner image, task families, validation and grading are Python + pytest; JavaScript is a contract value, not an implemented runner. Java/C++ would need new runner images, reviewed task families and oracles.
-- Question preparation runs before the first question is shown and currently takes about a minute (52–90 s measured); the 60-minute timer starts when the assessment is created, so that time counts against the session.
-- PDF portfolios are read in the browser with pdf.js and drafted into JSON with the intake taxonomy and domain keywords; it's keyword extraction, not understanding, so the candidate must review the draft. Scanned (image-only) PDFs have no text and are refused with a message.
-- Portfolios that don't claim `arrays` can't be served a question yet; the UI says so and asks the candidate to add it only if they've practised it.
+- Candidate code is Python only; 6 reviewed task families (each needs an independent answer oracle).
+- TorqueCode checks skills consistent with the portfolio, not authorship of the projects.
+- It can't detect help from a second device; browser focus signals are evidence, not proof.
 
 ## 📁 Repository layout
 
 ```
-src/backend/
-  api/          Fastify app, auth, sessions, routes, wiring          (Karthik)
-  contracts/    shared TypeBox models + seam signatures              (Karthik)
-  generation/   generation + validation engine                       (Karthik)
-  seed_bank/    hand-verified tasks                                  (Karthik, Aryan)
-  runner/       Docker sandbox + grading                             (Rithvik)
-  llm/          Featherless client, guarded assistant, hints         (Rithvik)
-  intake/       portfolio parsing, domain detection, quiz            (Pranav)
-  scoring/      AI efficiency score, report builder                  (Pranav)
-  tests/        Vitest + pytest suites
-src/frontend/   React + Vite + Monaco web app, landing page, Vercel config (Akshit, Pranav)
-docs/           product context, backend plan, decisions, status logs, reviews
+src/frontend/          React + Vite + Monaco web app, landing page, Vercel config
+src/backend/api/       Fastify app, auth, assessments, persistence, wiring
+src/backend/intake/    portfolio parsing, project evidence, quiz
+src/backend/generation/ task families, evidence-based selection, K5 validation, receipts
+src/backend/runner/    Docker and E2B sandboxes, grading harness
+src/backend/llm/       Featherless client, guarded assistant, hints
+src/backend/scoring/   AI-efficiency score, report builder
+deploy/                local start/stop/verify scripts, cloud VM kit
+docs/                  product context, pitch deck, demo portfolios
 ```
 
 All code was written during the hackathon. Open-source libraries are used under their licenses.
-
-### Current task validation scope
-
-K5/K6 now use six reviewed Python families with independent answer oracles. The model selects a family/scenario; fixed templates supply the contract, code and examples. Unsupported or unverified tasks are withheld, and seed fallback must pass the same correctness checks. This supports bounded domain contextualization, not arbitrary task generation or every candidate technology stack. See [the validation policy](docs/BACKEND_DECISIONS.md#2026-10-31--independent-validation-policy-supersedes-earlier-k5k6-descriptions).
