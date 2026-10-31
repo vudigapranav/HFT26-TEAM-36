@@ -69,7 +69,11 @@
     "src/backend/contracts/public.ts",
     "src/backend/contracts/seams.ts",
     "src/backend/api/assessments.ts",
-    "src/backend/api/assessment-store.ts"
+    "src/backend/api/assessment-store.ts",
+    "src/backend/generation/*",
+    "src/backend/contracts/internal.ts",
+    "src/backend/api/postgres-assessment-store.ts",
+    "src/backend/api/wiring.ts"
   ],
   "akshit": [
     "src/frontend/*",

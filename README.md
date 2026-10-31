@@ -165,3 +165,7 @@ docs/           product context, backend plan, decisions, status logs, reviews
 ```
 
 All code was written during the hackathon. Open-source libraries are used under their licenses.
+
+### Current task validation scope
+
+K5/K6 now use four reviewed Python families with independent answer oracles. The model selects a family/scenario; fixed templates supply the contract, code and examples. Unsupported or unverified tasks are withheld, and seed fallback must pass the same correctness checks. This supports bounded domain contextualization, not arbitrary task generation or every candidate technology stack. See [the validation policy](docs/BACKEND_DECISIONS.md#2026-10-31--independent-validation-policy-supersedes-earlier-k5k6-descriptions).

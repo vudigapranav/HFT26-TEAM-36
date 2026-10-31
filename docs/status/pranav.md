@@ -182,3 +182,12 @@ Newest entries at the bottom. Written by `/ship`.
 - Local API journey on separate port 3101 passed all three seed sets, both unlocks, report score/AIE/integrity/claims. API attacks: 64 passed / 0 failed / 3 skipped (live assistant unavailable without a key). Journey warnings: assistant unavailable and report-history endpoint absent on current main. Existing backend on port 3001 was left running.
 - Shared edits are limited to optional report contract/input, two API report/snapshot lines, and the optional AssessmentRecord snapshot field. scripts/owners.json explicitly permits those four paths for this authorized integration; no hooks were bypassed.
 - Handoff: docs/reviews/2026-10-31-pranav-backend-handoff.md. New teammate PRs #54 (K6), #55 (prepared cloud kit), #56 (K11) are separate and not merged by this change. K11 must preserve the report snapshot/input and the full-suite test-harness option when integrating its overlapping files.
+
+## 2026-10-31 — independent K5/K6 correctness verification
+
+- Reproduced all three requested rejection regressions on the old real Docker validator (each incorrectly accepted), then verified they are rejected by the replacement.
+- Added four trusted Python families, independent oracle answer keys, canonical verified examples, strict grading/reference provenance, honest performance receipts and bounded model ID selection. Unsupported or incomplete verification fails closed.
+- Closed the durable worker fallback bypass; active old tasks are revalidated while preserving saved work. Failed jobs do not release questions or fabricate reports. Added restart/revalidation and missing-certificate coverage.
+- Wired the real factory with K8-compatible wiring. Fixed the compiled build to include Python validation scripts after the real HTTP check exposed their omission.
+- Final source suite: 391 passed, 0 failed/skipped across 26 files with isolated PostgreSQL and real Docker. Typecheck/build passed; Python reporter 4 passed; release-check fixtures 6 passed. Built HTTP journey, verification flag, restart durability and exactly-once expiry recovery passed on a separate port/disposable database. No live LLM or cloud verification claimed; assistant correctly unavailable without a key.
+- No frontend changes. Details and explicit limits: docs/reviews/2026-10-31-independent-validation.md. Current main remains b0fad23; K8 PR #58 is separate and needs its old fallback mocks aligned with semantic verification before merging.

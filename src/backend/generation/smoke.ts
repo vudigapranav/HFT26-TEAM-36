@@ -44,7 +44,7 @@ async function main() {
   const summary = {
     ok: result.kind === 'ok',
     tiers: result.kind === 'ok' ? Object.fromEntries(Object.entries(result.value).map(([tier, task]) => [tier, { source: task.source, task_id: task.task_id, title: task.title }])) : null,
-    receipts: receipts.map(r => ({ task_id: r.task_id, valid: r.valid, gates: r.gates.map(g => `${g.gate}:${g.status}`).join(' ') })),
+    receipts: receipts.map(r => ({ task_id: r.task_id, valid: r.valid, family_id: r.family_id, structural_valid: r.structural_valid, semantic_verified: r.semantic_verified, gates: r.gates.map(g => `${g.gate}:${g.status}`).join(' ') })),
     model_calls: calls.length, model: [...new Set(calls.map(c => String(c.model)))],
     model_latency_ms: calls.map(c => c.latency_ms), prompt_tokens: calls.reduce((s, c) => s + (Number(c.prompt_tokens) || 0), 0),
     completion_tokens: calls.reduce((s, c) => s + (Number(c.completion_tokens) || 0), 0), cost_usd: Number(spent().toFixed(6)), cap_usd: CAP_USD,

@@ -152,8 +152,9 @@ describe.skipIf(!dockerReady)('K5 with the real Docker runner', () => {
 
       expect(receipt.valid, JSON.stringify(receipt, null, 2))
         .toBe(true);
-      expect(receipt.gates.every(g => g.status === 'pass'),
+      expect(receipt.gates.every(g => g.status === 'pass' || g.status === 'not_applicable'),
         JSON.stringify(receipt, null, 2)).toBe(true);
+      expect(receipt.semantic_verified).toBe(true);
       expect(gate(receipt, 'reference').status).toBe('pass');
       expect(gate(receipt, 'starter').status).toBe('pass');
     },
@@ -225,7 +226,7 @@ it('K5 rejects fabricated incomplete runner results', async () => {
 });
 
 // Contract receipts describe only the checks that actually ran.
-it('does not claim statement-example or brute-force validation for undeclared artifacts', async () => {
+it('reports actual independent family checks instead of self-consistency', async () => {
   const task = await seed('novice');
   let invocation = 0;
   const runner: Ports['runTests'] = async input => {
@@ -243,9 +244,10 @@ it('does not claim statement-example or brute-force validation for undeclared ar
   const receipt = await validate(task, runner);
   expect(receipt.valid).toBe(true);
   expect(gate(receipt, 'examples').reason)
-    .toBe('No statement examples declared; covered by visible tests');
+    .toBe('Pinned contract and structured examples agree with independent oracle');
   expect(gate(receipt, 'differential').reason)
-    .toBe('Reference deterministic across 3 runs (no brute-force oracle supplied)');
+    .toMatch(/independent oracle/);
+  expect(receipt.semantic_verified).toBe(true);
   expect(invocation).toBe(4);
 });
 
@@ -265,5 +267,33 @@ it('rejects Master tasks without a named performance test', async () => {
       stdout: '', stderr: '', timed_out: false,
     } };
   };
-  expect(gate(await validate(task, runner), 'performance').status).toBe('fail');
+  const receipt=await validate(task,runner);
+  expect(receipt.valid).toBe(false);
+  expect(gate(receipt,'performance').status).not.toBe('pass');
+});
+
+it('never executes caller-authored tests even when their Python format is supported', async () => {
+  const task=await seed('novice');
+  task.tests[0]!.content += '\n# unreviewed caller answer key\n';
+  for(const visible of task.visible_tests) visible.content=task.tests[0]!.content;
+  const runner=vi.fn<Ports['runTests']>(async input=>{
+    expect(input.tests).toHaveLength(1);
+    expect(input.tests[0]!.path).toBe('tests/test_independent_oracle.py');
+    expect(input.tests[0]!.content).not.toContain('unreviewed caller');
+    return {kind:'unavailable',code:'SANDBOX_UNAVAILABLE',message:'Test stops after inspecting trusted input'};
+  });
+  const receipt=await validate(task,runner);
+  expect(receipt.valid).toBe(false);
+  expect(gate(receipt,'format').status).toBe('fail');
+  expect(runner).toHaveBeenCalledTimes(1);
+});
+
+it('leaves an unsupported family unverified without invoking the runner',async()=>{
+  const task=await seed('novice');task.family_id='unreviewed-family';
+  const runner=vi.fn<Ports['runTests']>();
+  const receipt=await validate(task,runner);
+  expect(receipt.valid).toBe(false);
+  expect(receipt.semantic_verified).toBe(false);
+  expect(gate(receipt,'differential').status).toBe('skipped');
+  expect(runner).not.toHaveBeenCalled();
 });

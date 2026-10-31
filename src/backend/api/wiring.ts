@@ -10,6 +10,8 @@ import { DEFAULT_RUNNER_IMAGE } from './runner-status.js';
 import { createDevPorts } from './dev-stubs.js';
 import { chat } from '../llm/featherless.js';
 import { createValidationEngine } from '../generation/validate.js';
+import { createGenerator } from '../generation/generate.js';
+import { loadSeedBank } from './seed-bank.js';
 
 // Only API wiring changes when Rithvik's isolated runner/LLM implementations merge.
 export function createWiredPorts(seed: PrivateTask, overrides: Partial<Ports> = {}): Ports {
@@ -25,9 +27,18 @@ export function createWiredPorts(seed: PrivateTask, overrides: Partial<Ports> = 
         kind: 'unavailable', code: 'NOT_IMPLEMENTED', message: 'Hint unavailable',
       };
     }, ...overrides };
+  const validateTask =
+    overrides.validateTask ?? createValidationEngine(wired.runTests);
+
   return {
     ...wired,
-    validateTask: overrides.validateTask ??
-      createValidationEngine(wired.runTests),
+    validateTask,
+    generateAssessment: overrides.generateAssessment ??
+      createGenerator({
+        chat: wired.chat,
+        runTests: wired.runTests,
+        validateTask,
+        seedBank: loadSeedBank,
+      }),
   };
 }
