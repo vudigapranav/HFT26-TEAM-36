@@ -1,9 +1,16 @@
-# Frontend integration — Claude Code prompts for Pranav (31 Oct, 07:10)
+# Frontend integration — Claude Code prompts for Pranav (31 Oct, updated 07:50)
 
 Run these **in order**, one Claude Code session each (`/clear` between them), on Pranav's Mac in the repo.
 Every commit is authored as `vudigapranav <vudigapranav@gmail.com>`; **no `Co-Authored-By` trailers**. Never push to `main`, never `--no-verify`, never commit `.env`.
 
-## What is already done (verified, not assumed)
+## Status at 07:50
+
+- **Prompt 1: done.** #60 (independent validation) is merged into main as d6e120e; your status entry is PR #61.
+- **Prompt 2: running on Pranav's Mac** on `pranav/frontend-import`. Before pushing, run `git pull --rebase origin pranav/frontend-import`: this file was updated on that branch.
+- **Backend blocker fixed: PR #63** (`pranav/arrays-families`) adds arrays-only Adept and Master families, so `normal-web.json` and every portfolio that claims arrays get all 3 question sets. Full suite: 399 passed, 0 skipped, with PostgreSQL 16 and the real Docker runner. Merge #63 before Prompt 3.
+- **Also open:** #62 (Rithvik, Windows-safe build copy), #58 (Karthik K8; must be rebased onto #60, see the comment on the PR).
+
+## What was already done (verified, not assumed)
 
 - Akshit's zip is imported on branch **`pranav/frontend-import`** under `src/frontend/` (PR open, not merged).
 - `package-lock.json` was removed; the frontend dependencies are in the root `pnpm-lock.yaml`. `pnpm install --frozen-lockfile --ignore-scripts` passes.
@@ -23,7 +30,7 @@ Every commit is authored as `vudigapranav <vudigapranav@gmail.com>`; **no `Co-Au
 | G7 | 8 of the 11 design PNGs are missing from the zip (01, 05–11). `Ready.tsx` shows `/designs/07-coding-workspace.png` → broken image. `/landing` and `designs.html` reference them too. | `public/designs/` |
 | G8 | No `vercel.json`, so the `/api/:path*` rewrite to the VM backend (LOCKED deployment decision) is missing. | `src/frontend/` |
 | G9 | The 3.7 MB Workspace chunk: Monaco is not split out. | `vite.config.ts` |
-| G10 | Error codes the UI must map to clear messages: `SANDBOX_UNAVAILABLE` (503), `LLM_UNAVAILABLE` (503), `EXECUTION_IN_PROGRESS`, `HINTS_EXHAUSTED`, `HINT_IN_PROGRESS`, `ASSISTANT_IN_PROGRESS`, `UNLOCK_NOT_AVAILABLE`, `ASSESSMENT_FINISHED`, `PORTFOLIO_REQUIRED`, `PERSISTENCE_UNAVAILABLE`, 429 with `Retry-After`. | `lib.tsx` `ErrorNotice` |
+| G10 | Error codes the UI must map to clear messages: `SEED_TOPIC_UNAVAILABLE` (422: the portfolio claims no `arrays`, so no question can be served; tell the candidate to add arrays to `dsa_topics_solved`), `SANDBOX_UNAVAILABLE` (503), `LLM_UNAVAILABLE` (503), `EXECUTION_IN_PROGRESS`, `HINTS_EXHAUSTED`, `HINT_IN_PROGRESS`, `ASSISTANT_IN_PROGRESS`, `UNLOCK_NOT_AVAILABLE`, `ASSESSMENT_FINISHED`, `PORTFOLIO_REQUIRED`, `PERSISTENCE_UNAVAILABLE`, 429 with `Retry-After`. | `lib.tsx` `ErrorNotice` |
 
 ---
 
@@ -61,19 +68,57 @@ Do, with tests for each:
 Then: `pnpm --filter torquecode-frontend build`, `pnpm --filter torquecode-frontend test`, `pnpm --filter torquecode-frontend run test:ui`, `pnpm typecheck`, `pnpm ownership:check`. Commit as vudigapranav (no Co-Authored-By trailers) in small commits, push and update the PR. Don't merge yet; Prompt 3 is the gate.
 ```
 
-## Prompt 3 — real end-to-end run (the merge gate)
+## Prompt 3 — merge gate: real end-to-end run against main (after Prompt 2 is pushed)
 
 ```
-On branch pranav/frontend-import after Prompt 2. Run the REAL stack locally. Nothing counts unless it actually ran.
-1. Backend: dedicated fresh Postgres DB; `pnpm db:migrate`; build the runner image (docker build -t torquecode-runner-python:dev src/backend/runner/images/python, plus the R3 grader image per docs/BACKEND_DECISIONS.md); start with APP_MODE=auth RUNNER=docker AUTH_ORIGIN=http://127.0.0.1:4177 DATABASE_URL=... and FEATHERLESS_API_KEY from my private .env (never print or commit it). Check /health says the runner is available.
-2. Frontend: `pnpm --filter torquecode-frontend dev` on 127.0.0.1:4177 (Vite proxies /api to 3001 and strips the prefix).
-3. With Playwright (Chromium is installed; don't reinstall), script and run the full journey: register a new email → login → upload src/backend/tests/fixtures/portfolios/<normal>.json → quiz → start → wait through generation progress → Question set 1: edit, Run, Submit each question → Unlock next questions → set 2: Hint, Assistant message (expect a reply, or a clean 503 LLM_UNAVAILABLE message if there's no key), Submit all → Unlock → set 3: Submit all → open the report (scores, claims, AIE, integrity) → Past reports → logout → login again → the report is still there. Also: reload mid-assessment (timer and files restored); try a third unlock (must be refused); paste text (integrity signal appears in the report).
-4. Save the Playwright script as src/frontend/tests/e2e/journey.spec.ts plus screenshots in the scratch folder. Report each step pass/fail. Fix frontend bugs you find; for backend bugs, write a precise issue for Karthik/Rithvik and don't edit their files.
-5. Only when every step passes: update docs/status/pranav.md and the PR body with the exact results, then merge the PR (as vudigapranav, no trailers).
+You are on Pranav's Mac in the TorqueCode repo. Read CLAUDE.md, docs/BACKEND_DECISIONS.md and docs/prompts/now/FRONTEND_INTEGRATION.md.
+Nothing counts unless it actually ran. Report every step as pass/fail with the evidence (status code, screenshot path, test output). Never print or commit secrets.
+
+0. Sync: `git fetch origin`. Check that PR #63 (pranav/arrays-families) is merged into main (`gh pr view 63`). If it isn't, stop and tell me; don't continue on an old main. Then on pranav/frontend-import: `git pull --rebase origin pranav/frontend-import && git rebase origin/main`, then `pnpm install --frozen-lockfile --ignore-scripts && pnpm typecheck && pnpm build`.
+1. Backend, real stack, on a fresh dedicated database (never an existing one):
+   - Postgres 16 (docker run --rm -d --name tc-e2e-pg -e POSTGRES_PASSWORD=<random> -p 127.0.0.1:55432:5432 postgres:16), DATABASE_URL=postgres://postgres:<random>@127.0.0.1:55432/postgres
+   - `pnpm db:migrate`
+   - `docker build -t torquecode-runner-python:dev src/backend/runner/images/python`
+   - Start the backend: APP_MODE=auth RUNNER=docker AUTH_ORIGIN=http://127.0.0.1:4177 PORT=3001, plus FEATHERLESS_API_KEY and the model variables from my private .env if present.
+   - `curl -s http://127.0.0.1:3001/health` must show runner_available:true.
+2. Frontend: `pnpm --filter torquecode-frontend dev` (127.0.0.1:4177; Vite proxies /api to 3001 and strips the prefix).
+3. Write src/frontend/tests/e2e/journey.spec.ts with Playwright (use the installed Chromium; don't run `playwright install` if it's already there) and run it headless against http://127.0.0.1:4177. Steps:
+   a. register a new random email + 14-char password → login → reload the page and confirm the session survives (/auth/me)
+   b. upload src/backend/tests/fixtures/portfolios/normal-web.json → profile and warnings show → quiz → start
+   c. the generation-progress screen shows receipts → questions appear (no Novice/Adept/Master text anywhere: assert on page text)
+   d. Question set 1: edit a file, Run (visible results), Submit every question → "Unlock next questions" appears → unlock
+   e. Question set 2: the hint and assistant panels are visible. Ask for a hint; send one assistant message (accept a reply, or the clean "assistant unavailable" message on 503 LLM_UNAVAILABLE). Submit every question → unlock
+   f. Question set 3: one Master question is present. Submit it. No further unlock button. Calling POST /tier/upgrade via fetch returns 409.
+   g. paste text into the editor (integrity signal), reload mid-session (timer and edited files restored)
+   h. "Submit all questions" → open the report: total score, per-task rows with level names, pass rates, AIE breakdown, integrity signals, claims (demonstrated / not demonstrated / not tested)
+   i. Past reports lists this report → logout → login → the report still opens
+   j. negative: a second browser context with a portfolio that has no arrays (src/backend/tests/fixtures/portfolios/typo-topics.json) shows the SEED_TOPIC_UNAVAILABLE message, not a blank screen
+4. Save screenshots of every step to src/frontend/tests/e2e/screenshots/ (gitignored) and fix every frontend bug you find. Re-run until all steps pass. Backend bugs: don't edit Karthik's or Rithvik's files; write the exact reproduction (request, response, expected) into the PR body and tell me.
+5. Also run: `pnpm --filter torquecode-frontend test`, `pnpm --filter torquecode-frontend run test:ui`, `pnpm ownership:check`.
+6. When every step passes: push (commits as vudigapranav, no Co-Authored-By trailers), update PR #59's body with the step table and exact results, append to docs/status/pranav.md, then merge #59. Stop the Postgres container you started.
 ```
 
-## Prompt 4 — Vercel config (after Rithvik's VM backend URL exists)
+## Prompt 4 — deploy: Vercel frontend + VM backend
 
 ```
-Add src/frontend/vercel.json: framework vite, buildCommand "pnpm --filter torquecode-frontend build", outputDirectory "dist", rewrites [{"source":"/api/:path*","destination":"https://<BACKEND_HOST>/:path*"}] then the SPA fallback. Use the real backend host from Rithvik's deploy notes (docs/status/rithvik.md / deploy/); if it isn't there, stop and ask me; never invent a hostname. Remind me to set AUTH_ORIGIN=<vercel production URL> and TRUST_PROXY=true on the VM. Then deploy and repeat Prompt 3's journey against the Vercel URL (from a clean browser profile) and record the results.
+Read CLAUDE.md (deployment decision), deploy/README.md and docs/status/rithvik.md.
+1. Get the backend's public HTTPS host from Rithvik's deploy notes (R6b). If it isn't written down anywhere, STOP and ask me. Never invent a hostname.
+2. Add src/frontend/vercel.json:
+   {"framework":"vite","installCommand":"pnpm install --frozen-lockfile --ignore-scripts","buildCommand":"pnpm --filter torquecode-frontend build","outputDirectory":"dist",
+    "rewrites":[{"source":"/api/:path*","destination":"https://<BACKEND_HOST>/:path*"},{"source":"/((?!api/|landing/|designs/|assets/).*)","destination":"/index.html"}]}
+   Check against the Vercel docs (use Context7 or the web) that the root directory and pnpm workspace settings are right for a monorepo with the project root at src/frontend; adjust and explain.
+3. Tell me the exact VM env to set: APP_MODE=auth, RUNNER=docker, TRUST_PROXY=true, AUTH_ORIGIN=https://<vercel-production-domain>, DATABASE_URL, FEATHERLESS_API_KEY + model vars. The backend must only be reachable through the proxy path that sets x-forwarded-for.
+4. Deploy (vercel CLI if I'm logged in, otherwise give me the dashboard steps), then run Prompt 3's Playwright journey against the Vercel URL with BASE_URL=<vercel url> from a clean browser context. Record the results in docs/status/pranav.md and docs/demo/.
+5. Branch pranav/deploy-vercel, PR, merge after the journey passes.
+```
+
+## Prompt 5 — feature freeze, demo safety and submission
+
+```
+Read CLAUDE.md, docs/TorqueCode_Context.md §13 and §17, docs/demo/*, README.md and every docs/status/*.md.
+1. README: problem, solution, architecture diagram (frontend Vercel → /api rewrite → Fastify + Postgres + R3 Docker runner + Featherless), setup (exact commands that actually work today), the live demo link, test results with dates, honest limitations (context §17 plus: Python only, 6 reviewed task families, finite oracle checks, measured performance workload, portfolios without arrays are refused with a clear message). Every claim must point to a test or a file; remove anything unverified.
+2. Demo safety: pre-create one demo account and a completed report on the deployed app (record the email only in my private notes, never in the repo); record a 3–4 minute screen capture of the full journey as a backup.
+3. Run the release check (pnpm release:check or the script in scripts/ if present) and the attack suite v2 against the deployed URL; paste the counts.
+4. Final status entries for everyone in docs/status/*.md; check for unmerged PRs and list them for me.
+5. Don't open the submission PR to cbitosc yourself. Prepare its title "[SUBMISSION] TEAM-36 - PAARK - <track>" and body in docs/demo/submission.md and tell me when it's ready; I'll open it.
 ```
