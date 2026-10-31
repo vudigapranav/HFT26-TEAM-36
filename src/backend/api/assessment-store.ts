@@ -7,7 +7,7 @@ export type AssessmentRecord = {
  session: Session; task: PrivateTask; files: PrivateTask['files']; events: Event[]; runs: InternalRunResult[];
  tier_work?: Partial<Record<Tier,TierWork>>; question_sets?: Partial<Record<Tier,TierWork[]>>; unlocked_tiers?: Tier[];
  hint_level: number; hint_pending?: boolean; assistant_pending?: boolean; operation?: Promise<InternalRunResult>; expiry?: Promise<void>; auto_submit_error?: string;
- profile_id?: string; profile_snapshot?: CandidateProfile; focus_snapshot?: FocusLane; generation?: GenerationJob;
+ profile_id?: string; profile_snapshot?: CandidateProfile; portfolio_snapshot?: unknown; focus_snapshot?: FocusLane; generation?: GenerationJob;
 };
 // Explicit in-memory adapter for unit tests. The server always selects PostgresAssessmentStore.
 export class AssessmentStore {

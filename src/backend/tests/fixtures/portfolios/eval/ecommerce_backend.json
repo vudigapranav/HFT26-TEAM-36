@@ -1,0 +1,37 @@
+{
+  "candidate": {
+    "name": "Ravi Kumar",
+    "email": "ecommerce.backend@example.com"
+  },
+  "projects": [
+    {
+      "name": "ShopFlow",
+      "description": "E-commerce backend for a small retailer: shopping cart, inventory and order processing over a REST API.",
+      "tech_stack": [
+        "node.js",
+        "express",
+        "postgresql",
+        "react"
+      ],
+      "role": "Backend developer",
+      "highlights": [
+        "Built order processing that ignores duplicate checkout events using a hash map keyed by order ID",
+        "Kept inventory stock levels consistent across concurrent orders",
+        "Sorted order history for the account page"
+      ]
+    }
+  ],
+  "tech_stack": [
+    "javascript",
+    "sql"
+  ],
+  "skills": [
+    "rest-apis",
+    "sql"
+  ],
+  "dsa_topics_solved": [
+    "arrays",
+    "hashing",
+    "sorting"
+  ]
+}

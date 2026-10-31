@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import type { PrivateTask, Tier } from '../contracts/internal.js';
 import type { Ports } from '../contracts/seams.js';
 import { families, familyTask, SCENARIOS, type Family, type ScenarioId } from './families.js';
+import { catalogue, selectWithEvidence } from './catalogue.js';
 export const PROMPT_VERSION='family-selection-v1';
 export type GenerationLog=Record<string,string|number|boolean>;
 export type GeneratorDeps={chat:Ports['chat'];runTests:Ports['runTests'];validateTask:Ports['validateTask'];seedBank:()=>Promise<Partial<Record<Tier,PrivateTask[]>>>;log?:(event:GenerationLog)=>void;maxAttempts?:number;nonce?:()=>string};
@@ -46,6 +47,35 @@ export function createGenerator(deps:GeneratorDeps):Ports['generateAssessment'] 
     // All-or-nothing output contract: don't spend provider credit on unsupported coverage.
     if(tiers.some(t=>!fallback(t)))return {kind:'unavailable',code:'NOT_IMPLEMENTED',message:'No supported reviewed family for every tier within claimed topics'};
     const tasks={} as Record<Tier,PrivateTask>;
+    const verify=async(tier:Tier,task:PrivateTask,family:Family)=>{
+      input.progress({assessment_id:'pending',status:'validating',tier});
+      const checked=await cancellable(deps.validateTask({task,claimed_topics:input.profile.claimed_topics},context),context.signal);
+      return checked.kind==='ok'&&checked.value.valid&&checked.value.semantic_verified===true&&checked.value.structural_valid===true&&checked.value.family_id===family.id;
+    };
+    // Evidence-grounded path: project evidence ranks eligible reviewed families; the model may only reorder that shortlist.
+    if(input.evidence?.projects.length){
+      const picks=await selectWithEvidence({entries:catalogue(registry),claimed:input.profile.claimed_topics,evidence:input.evidence,
+        domain:input.profile.domain,focusDomain:input.focus_lane.domain,chat:deps.chat,signal:context.signal,maxAttempts});
+      for(const [i,tier] of tiers.entries()){
+        input.progress({assessment_id:'pending',status:'generating',tier});
+        const pick=picks[tier];
+        const family=pick?registry.find(f=>f.id===pick.family_id&&f.base.tier===tier):undefined;
+        const chosen=family??fallback(tier)!;
+        let task:PrivateTask;
+        if(pick&&family){
+          task=familyTask(family,input.profile.domain,pick.scenario_id);
+          task.task_id=`family-${i+1}-${nonce()}`;task.source=pick.method==='model'?'generated':'seed_bank';
+          const project=input.evidence.projects[pick.project_index]!;
+          task.selection={method:pick.method,scenario_id:pick.scenario_id,project_index:pick.project_index,project_name:project.name,evidence:pick.evidence.slice(0,10),score:pick.score,...(pick.prompt_version?{prompt_version:pick.prompt_version}:{})};
+        } else task=structuredClone(chosen.base); // no project evidence fits this tier: reviewed default, not claimed as personalized
+        task.family_id=chosen.id;
+        if(!await verify(tier,task,chosen))return {kind:'unavailable',code:'NOT_IMPLEMENTED',message:'Independent family verification did not complete; no task released'};
+        log({event:'generation_family',family_id:chosen.id,source:task.source,method:task.selection?`evidence_${task.selection.method}`:'reviewed_default',scenario:task.selection?.scenario_id??'none',prompt_version:task.selection?.prompt_version??PROMPT_VERSION});
+        tasks[tier]=task;
+        input.progress({assessment_id:'pending',status:'ready',tier});
+      }
+      return {kind:'ok',value:{novice:tasks.novice,adept:tasks.adept,master:tasks.master}};
+    }
     for(const tier of tiers){
       input.progress({assessment_id:'pending',status:'queued',tier});
       let selected=fallback(tier)!,scenario:ScenarioId='operations',personalized=false;

@@ -6,6 +6,8 @@ export type Limits = { wall_time_ms: number; memory_mb: number; cpu_count: numbe
 export type TestFile = { path: string; content: string; visibility: 'visible' | 'hidden'; ids: string[] };
 export type PrivateTask = Task & {
   family_id?: string;
+  /** Server-only record of why this reviewed task was chosen (evidence-grounded selection). */
+  selection?: { method: 'model' | 'deterministic'; scenario_id: string; project_index: number; project_name: string; evidence: string[]; score: number; prompt_version?: string };
   reference_files: File[]; tests: TestFile[]; hint_ladder: string[];
   limits: Limits; f2p_ids: string[]; p2p_ids: string[];
 };

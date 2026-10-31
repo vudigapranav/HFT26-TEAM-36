@@ -1,0 +1,20 @@
+{
+  "candidate": {
+    "name": "Asha P",
+    "email": "minimal@example.com"
+  },
+  "projects": [
+    {
+      "name": "App",
+      "description": "A small app.",
+      "tech_stack": [],
+      "role": "Developer",
+      "highlights": []
+    }
+  ],
+  "tech_stack": [],
+  "skills": [],
+  "dsa_topics_solved": [
+    "arrays"
+  ]
+}
