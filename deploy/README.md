@@ -46,6 +46,23 @@ It is idempotent and fails with an actionable message at the first problem. It:
 Featherless: set `FEATHERLESS_API_KEY` in the repo-root `.env` or in `deploy/.env`. Without it the app still
 runs, and AI calls return 503.
 
+## Optional: E2B cloud sandboxes instead of Docker (`RUNNER=e2b`)
+
+`src/backend/runner/e2bRunner.ts` runs the same R3 split (trusted grader + untrusted worker, host relay, same
+harness) in two [E2B](https://e2b.dev) sandboxes per Run/Submit, with internet access off. Docker stays the default.
+
+1. Put `E2B_API_KEY` in the repo-root `.env` (server only; never in the frontend or git).
+2. Build the template once per E2B account (same Python and pinned pytest as the Docker image):
+   `pnpm --filter @torquecode/backend e2b:template`
+3. Start the backend with `RUNNER=e2b` (and `E2B_TEMPLATE` if you named the template differently). `/health` shows
+   `runner_image: "e2b:<template>"` and `runner_available: true` when a key is set.
+
+Trade-offs: no Docker needed where the backend runs, and microVM isolation; but every relayed call crosses the
+network, so runs and question preparation are slower than local Docker, CPU/memory come from the template rather than
+per task, and test files are sent to E2B for the length of a run. Measure with
+`E2B_API_KEY=... pnpm --filter @torquecode/backend exec vitest run --config vitest.config.ts tests/runner/e2b-runner.test.ts`
+(the live block prints the time of two submits).
+
 ## Verify
 
 ```bash
