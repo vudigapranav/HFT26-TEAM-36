@@ -7,6 +7,8 @@ export type TierWork = {
 };
 
 export type AssessmentRecord = {
+  // Freeze claims for this assessment; later portfolio uploads must not rewrite its report.
+  profile_snapshot?: CandidateProfile;
   session: Session; task: PrivateTask; files: PrivateTask['files']; events: Event[]; runs: InternalRunResult[];
   // K10: per-tier state; optional during migration of existing fixtures.
   tier_work?: Partial<Record<Tier, TierWork>>;

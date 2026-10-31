@@ -272,7 +272,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     }
     if (store.assessments.size >= store.max_assessments) throw new HttpProblem(429, 'STORE_CAPACITY');
     const started = now();
-    const record: AssessmentRecord = { session: { id: randomUUID(), user_id: user(request), started_at: new Date(started).toISOString(), expires_at: new Date(started + 3600000).toISOString(), current_tier: 'novice', status: 'active' }, task: structuredClone(seed), files: structuredClone(seed.files), events: [], runs: [], hint_level: 0,
+    const record: AssessmentRecord = { profile_snapshot: structuredClone(stored.profile), session: { id: randomUUID(), user_id: user(request), started_at: new Date(started).toISOString(), expires_at: new Date(started + 3600000).toISOString(), current_tier: 'novice', status: 'active' }, task: structuredClone(seed), files: structuredClone(seed.files), events: [], runs: [], hint_level: 0,
       tier_work: {
         novice: {
           task: structuredClone(seed),
@@ -531,6 +531,6 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
         TIER_ORDER.indexOf(record.session.current_tier))
       .flatMap(tier => works(record, tier).map(w => w.task));
     for (const task of tasks) if (task.tier !== 'novice') real(ports.calculateAie({ events: record.events, runs: record.runs, task }));
-    return real(ports.buildReport({ session: record.session, tasks, runs: record.runs, events: record.events }));
+    return real(ports.buildReport({ session: record.session, tasks, runs: record.runs, events: record.events, profile: record.profile_snapshot ?? store.profiles.get(user(request))?.profile }));
   });
 }
