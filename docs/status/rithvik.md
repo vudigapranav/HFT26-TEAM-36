@@ -537,3 +537,14 @@ Branch `rithvik/r6b-cloud`; only `deploy/cloud/` and status changed. The PR stay
   - The PostgreSQL harness, `scripts/test-auth.mjs`, is Pranav/Karthik's (`scripts/*`); the hook blocks it from this branch. It needs `os.tmpdir()` instead of `'/tmp'` and a Windows-safe `pnpm` spawn.
   - R6b VM deploy is blocked: no VM host or SSH access has been provided.
   - My earlier local K6-wiring commit is superseded by #60 and was dropped.
+
+## 2026-10-31 — Rithvik-updates: guarded assistant no longer states the fix in prose
+- **Failing condition (live, local demo):** asked "give me answer", the assistant replied "uses `max(0, end - start - 1)` instead of `end - start`", the exact fix. Two holes in `checkOutput`:
+  - the fix fragment is a substring of the candidate's buggy line, so the own-code exemption allowed it;
+  - it normalizes to 9 characters, below the 10-character fragment check.
+- **Fix:**
+  - `llm/guards.ts`: a reply with replacement wording ("instead of", "should be", "change … to", "replace … with", …) that quotes an expression from a reference fix line is blocked as `prescribed_fix`.
+  - `llm/assistant.ts`: the single retry after a blocked draft is plain prose only (no backticks, code or expressions), so a leaky model still yields a usable hint. Still 2 drafts max: 3 exceeded the API's 8.5 s assistant deadline.
+- **Tests:** `vitest run tests/llm` passes 142/142 on current main, including a new `prescribed-fix.test.ts` (the live leak plus 3 phrasings blocked; a Socratic hint allowed). `tsc` OK.
+- **Live check (local backend, Featherless):** "give me answer" was blocked on the output guard (`prescribed_fix`), then answered with a hint that doesn't reveal the fix.
+- **Limitation:** guards block corrected code, not reasoning. For one-line bugs a good hint sits close to the answer.

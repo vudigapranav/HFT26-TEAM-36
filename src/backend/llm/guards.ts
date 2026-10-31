@@ -106,6 +106,8 @@ export function solutionFingerprint(reference: File[], visible: File[]): Set<str
   return fingerprint;
 }
 
+const REPLACEMENT_CUE = /\b(?:instead of|rather than|should (?:be|use|read)|needs? to be|change[sd]?\b[^.\n]{0,80}?\bto|replace[sd]?\b[^.\n]{0,80}?\bwith|swap\b[^.\n]{0,80}?\bfor|correct (?:formula|expression|value|calculation|version) (?:is|would be))\b/i;
+
 export function checkOutput(reply: string, context: { files: File[]; fingerprint: Set<string> | null; policy: OutputPolicy }): OutputVerdict {
   if (DISCLOSURE.test(reply)) return { ok: false, code: 'disclosure' };
   if (SECRETS.test(reply)) return { ok: false, code: 'secret' };
@@ -126,6 +128,13 @@ export function checkOutput(reply: string, context: { files: File[]; fingerprint
     // Fragments of a fix line count too (live eval: "`for count in counts` ... `max(peak, count)`").
     for (const fragment of [...inline, ...codeLines].map(normalizeLine).filter(f => f.length >= 10)) {
       for (const line of context.fingerprint) if (line.includes(fragment)) return { ok: false, code: 'reference_similarity' };
+    }
+    // A replacement stated in prose with a short fix fragment (live: "uses `max(0, end - start - 1)` instead of
+    // `end - start`"). The fix can be a substring of the buggy line, so the own-code exemption below misses it.
+    if (REPLACEMENT_CUE.test(reply)) {
+      for (const fragment of inline.map(normalizeLine).filter(f => f.length >= 4 && /[()[\]=<>+\-*/%]/.test(f))) {
+        for (const line of context.fingerprint) if (line.includes(fragment)) return { ok: false, code: 'prescribed_fix' };
+      }
     }
   }
   // New task-specific code: an expression that uses the candidate's own names but isn't in
