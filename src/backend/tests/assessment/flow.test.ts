@@ -652,3 +652,22 @@ it('K10 requires every question in a multi-question initial set', async () => {
     expect(response.body).not.toMatch(/novice|adept|master/i);
   }
 });
+
+it('reports assessment-time claims after later portfolio uploads and enforces report ownership', async () => {
+  const { call, seed } = await setup();
+  const initial = { ...portfolio, dsa_topics_solved: ['arrays', 'graphs'] };
+  expect((await call('POST', '/portfolio', initial)).statusCode).toBe(200);
+  const created = await call('POST', '/assessments', {});
+  const id = created.json().assessment_id;
+  expect(created.statusCode).toBe(201);
+  expect((await call('POST', `/assessments/${id}/tasks/question-1/submit`, {files: seed.reference_files})).statusCode).toBe(200);
+  expect((await call('POST', '/portfolio', {...portfolio, dsa_topics_solved: ['hashing']})).statusCode).toBe(200);
+  const response = await call('GET', `/reports/report-${id}`);
+  expect(response.statusCode).toBe(200);
+  expect(response.json().claims).toEqual([
+    {topic: 'arrays', tested_by: seed.task_id, demonstrated: true},
+    {topic: 'graphs', tested_by: null, demonstrated: null},
+  ]);
+  expect((await call('GET', `/reports/report-${id}`, undefined, 'bob')).statusCode).toBe(404);
+  for (const secret of ['reference_files', 'hint_ladder', 'test_single_day']) expect(response.body).not.toContain(secret);
+});

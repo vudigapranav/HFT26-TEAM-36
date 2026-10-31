@@ -21,15 +21,17 @@ if pnpm typecheck >"$LOG/typecheck.txt" 2>&1; then ok "pnpm typecheck"
 else fail "pnpm typecheck (see output below)"; tail -n 20 "$LOG/typecheck.txt"; fi
 
 echo "== 2/4 tests"
-if pnpm test >"$LOG/test.txt" 2>&1; then
+# Run all backend suites inside the isolated DB harness, so auth is executed once
+# rather than skipped in the general suite and re-run separately.
+if { RUNNER=docker TORQUECODE_REQUIRE_DB=1 TORQUECODE_ALL_DB_TESTS=1 pnpm test:auth && pnpm test:python; } >"$LOG/test.txt" 2>&1; then
   if grep -Eq 'SKIP PostgreSQL|[1-9][0-9]* skipped' "$LOG/test.txt"; then
-    fail "pnpm test — required tests skipped; verify with PostgreSQL and Docker available"
+    fail "backend tests — required tests skipped; verify with PostgreSQL and Docker available"
     grep -E 'Tests |SKIP PostgreSQL' "$LOG/test.txt" | tail -n 10
   else
-    ok "pnpm test — $(grep -E '^ +Tests ' "$LOG/test.txt" | sed -E 's/^ +Tests +//' | paste -sd ';' -)"
+    ok "backend tests — $(grep -E '^ +Tests ' "$LOG/test.txt" | sed -E 's/^ +Tests +//' | paste -sd ';' -)"
   fi
 else
-  fail "pnpm test (see output below)"; grep -E 'FAIL|Tests ' "$LOG/test.txt" | tail -n 20
+  fail "backend tests (see output below)"; grep -E 'FAIL|Tests ' "$LOG/test.txt" | tail -n 20
 fi
 
 echo "== 3/4 attack suite against $API"
