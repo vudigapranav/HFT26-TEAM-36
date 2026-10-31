@@ -4,14 +4,15 @@ import {cleanup,render,screen,waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {HashRouter,Routes,Route} from 'react-router-dom';
 import {AppProvider,api,resetDemo} from '../src/lib';
-import {samplePortfolio} from '../src/demo-data.mjs';
+import {samplePortfolio} from '../src/demo-adapter.mjs';
 import type {AssessmentState,CandidateTask} from '../src/types';
 import Auth from '../src/pages/Auth';import Portfolio from '../src/pages/Portfolio';import Quiz from '../src/pages/Quiz';import Ready from '../src/pages/Ready';import Workspace from '../src/pages/Workspace';import Report from '../src/pages/Report';
 HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','')};
 HTMLDialogElement.prototype.close=function(){this.removeAttribute('open')};
 vi.mock('../src/monaco-setup',()=>({}));
 vi.mock('@monaco-editor/react',()=>({default:({value,onChange,options}:{value:string;onChange:(v:string)=>void;options:{readOnly:boolean;ariaLabel:string}})=><textarea aria-label={options.ariaLabel} readOnly={options.readOnly} value={value} onChange={e=>onChange(e.target.value)}/>}));
-beforeEach(()=>{cleanup();sessionStorage.clear();localStorage.clear();resetDemo();window.history.replaceState(null,'','/#/login');window.matchMedia=vi.fn().mockImplementation(()=>({matches:true,addEventListener(){},removeEventListener(){}}));Element.prototype.scrollTo=vi.fn();});
+// UI tests drive the preview adapter explicitly; the app itself defaults to live mode.
+beforeEach(async()=>{cleanup();sessionStorage.clear();localStorage.clear();localStorage.setItem('torque-mode','demo');await resetDemo();window.history.replaceState(null,'','/#/login');window.matchMedia=vi.fn().mockImplementation(()=>({matches:true,addEventListener(){},removeEventListener(){}}));Element.prototype.scrollTo=vi.fn();});
 afterEach(()=>cleanup());
 function show(path:string){window.history.replaceState(null,'',`/#${path}`);return render(<HashRouter><AppProvider><Routes><Route path="/login" element={<Auth/>}/><Route path="/portfolio" element={<Portfolio/>}/><Route path="/quiz" element={<Quiz/>}/><Route path="/ready" element={<Ready/>}/><Route path="/workspace" element={<Workspace/>}/><Route path="/report" element={<Report/>}/></Routes></AppProvider></HashRouter>);}
 async function login(){await api('POST','/auth/login',{email:'alex@example.com',password:'PreviewOnly123!'});}

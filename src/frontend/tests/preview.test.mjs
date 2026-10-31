@@ -35,8 +35,12 @@ test('preview adapter follows the public assessment contract without executing c
     Date.now=originals.now;
   });
   const adapter=await import('../src/api.mjs');
-  const {api,samplePortfolio,demoTasks,ApiError}=adapter;
-  adapter.resetDemo();
+  const {samplePortfolio,demoTasks}=await import('../src/demo-adapter.mjs');
+  const {api,ApiError}=adapter;
+  // Live is the default; the preview is opt-in and only exists outside production builds.
+  assert.equal(adapter.getMode(),'live');
+  adapter.setMode('demo');
+  await adapter.resetDemo();
   const expectProblem = (promise, code, status) => assert.rejects(promise, error => {
     assert.ok(error instanceof ApiError);
     assert.equal(error.code,code);
@@ -203,7 +207,7 @@ test('preview adapter follows the public assessment contract without executing c
       assert.ok(task.visible_tests.every(v=>v.id.includes('test_visible.py::')));
     }
     assert.equal(networkCalls,0);
-    const finished=adapter.finishDemo();
+    const finished=await adapter.finishDemo();
     assert.equal(finished.status,'finished');
     assert.equal((await api('GET',`/reports/${reportId}`)).final_score,78);
     await expectProblem(api('POST',route('tasks/question-3/submit'),{}),'ASSESSMENT_FINISHED',409);
@@ -213,7 +217,7 @@ test('preview adapter follows the public assessment contract without executing c
     const storedBefore=sessionStorage.getItem('torquecode-preview-v1');
     adapter.setMode('live');
     assert.equal(adapter.getMode(),'live');
-    assert.throws(()=>adapter.finishDemo(),e=>e.code==='PREVIEW_ONLY');
+    await assert.rejects(adapter.finishDemo(),e=>e.code==='PREVIEW_ONLY');
     let call;
     globalThis.fetch=async (url,init)=>{call={url,init};return {status:200,ok:true,json:async()=>({user:{user_id:'live-user',email:'live@example.com'}})};};
     const result=await api('POST','/auth/login',validCredentials);
@@ -232,6 +236,8 @@ test('preview adapter follows the public assessment contract without executing c
     });
     globalThis.fetch=async()=>({status:503,ok:false,json:async()=>({error:{code:'SANDBOX_UNAVAILABLE',message:'Runner unavailable',request_id:'runner-request'}})});
     await expectProblem(api('POST',route('tasks/question-1/submit'),{}),'SANDBOX_UNAVAILABLE',503);
+    globalThis.fetch=async()=>({status:429,ok:false,headers:new Headers({'Retry-After':'37'}),json:async()=>({error:{code:'RATE_LIMITED',message:'Too many attempts',request_id:'r'}})});
+    await assert.rejects(api('POST','/auth/login',validCredentials),error=>{assert.equal(error.code,'RATE_LIMITED');assert.equal(error.status,429);assert.equal(error.retry_after,37);return true;});
     globalThis.fetch=async()=>{throw Error('offline');};
     await expectProblem(api('GET','/auth/me'),'NETWORK_ERROR',0);
     globalThis.fetch=async()=>({status:502,ok:false,json:async()=>{throw Error('not JSON');}});

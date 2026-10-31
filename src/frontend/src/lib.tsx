@@ -1,8 +1,8 @@
 import {createContext,useContext,useState,type ReactNode,type ButtonHTMLAttributes} from 'react';
 import {Link,useNavigate} from 'react-router-dom';
-import {api as rawApi,getMode,setMode,resetDemo,finishDemo} from './api.mjs';
+import {api as rawApi,demoAvailable,getMode,setMode,resetDemo,finishDemo} from './api.mjs';
 import type {AuthUser,PortfolioResponse,FocusLane,AssessmentState,RunResult} from './types';
-export {getMode,setMode,resetDemo,finishDemo};
+export {demoAvailable,getMode,setMode,resetDemo,finishDemo};
 let leaveHandler:(()=>Promise<void>)|null=null;
 export function registerLeaveHandler(handler:(()=>Promise<void>)|null){leaveHandler=handler;}
 export async function flushPending(){await leaveHandler?.();}
@@ -19,7 +19,7 @@ export function ErrorNotice({error}:{error:unknown}){if(!error)return null;const
 export function Skeleton(){return <div className="skeleton" role="status" aria-label="Loading"><div className="skeleton-line" style={{width:130}}/><div className="skeleton-line title"/><div className="skeleton-grid"><div className="skeleton-block"/><div className="skeleton-block"/></div><p className="small muted">Preparing your workspace…</p></div>}
 function stored<T>(key:string):T|null{try{return JSON.parse(sessionStorage.getItem(key)||'null')}catch{return null}}
 function useStored<T>(key:string){const [value,setValue]=useState<T|null>(()=>stored<T>(key));return [value,(v:T|null)=>{setValue(v);if(v)sessionStorage.setItem(key,JSON.stringify(v));else sessionStorage.removeItem(key)}] as const;}
-function useModel(){const [user,setUser]=useState<AuthUser|null>(null);const [portfolio,setPortfolio]=useStored<PortfolioResponse>('torque-portfolio');const [focus,setFocus]=useStored<FocusLane>('torque-focus');const [assessment,updateAssessment]=useState<AssessmentState|null>(null);const [results,setResults]=useState<Record<string,RunResult>>({});const [notice,setNotice]=useState('');const [mode,updateMode]=useState<'demo'|'live'>(()=>getMode()==='live'?'live':'demo');const setAssessment=(v:AssessmentState)=>{updateAssessment(v);sessionStorage.setItem('torque-assessment-id',v.assessment_id);sessionStorage.setItem('torque-report-id',v.report_id)};return {user,setUser,portfolio,setPortfolio,focus,setFocus,assessment,setAssessment,results,setResults,notice,toast:setNotice,mode,setMode:(m:'demo'|'live')=>{setMode(m);updateMode(m)},clear:()=>{setUser(null);setPortfolio(null);setFocus(null);setResults({});updateAssessment(null);sessionStorage.removeItem('torque-assessment-id');sessionStorage.removeItem('torque-report-id')}};}
+function useModel(){const [user,setUser]=useState<AuthUser|null>(null);const [portfolio,setPortfolio]=useStored<PortfolioResponse>('torque-portfolio');const [focus,setFocus]=useStored<FocusLane>('torque-focus');const [assessment,updateAssessment]=useState<AssessmentState|null>(null);const [results,setResults]=useState<Record<string,RunResult>>({});const [notice,setNotice]=useState('');const [mode,updateMode]=useState<'demo'|'live'>(()=>getMode()==='demo'?'demo':'live');const setAssessment=(v:AssessmentState)=>{updateAssessment(v);sessionStorage.setItem('torque-assessment-id',v.assessment_id);sessionStorage.setItem('torque-report-id',v.report_id)};return {user,setUser,portfolio,setPortfolio,focus,setFocus,assessment,setAssessment,results,setResults,notice,toast:setNotice,mode,setMode:(m:'demo'|'live')=>{setMode(m);updateMode(m)},clear:()=>{setUser(null);setPortfolio(null);setFocus(null);setResults({});updateAssessment(null);sessionStorage.removeItem('torque-assessment-id');sessionStorage.removeItem('torque-report-id')}};}
 const Context=createContext<ReturnType<typeof useModel>|null>(null);
 export function AppProvider({children}:{children:ReactNode}){const model=useModel();return <Context.Provider value={model}>{children}</Context.Provider>}
 export function useApp(){const model=useContext(Context);if(!model)throw new Error('Missing app provider');return model;}

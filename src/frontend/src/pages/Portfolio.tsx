@@ -1,7 +1,8 @@
 import {useMemo,useRef,useState,type ChangeEvent,type DragEvent} from 'react';
 import {useNavigate} from 'react-router-dom';
 import type {Portfolio as PortfolioData,PortfolioResponse} from '../types';
-import {samplePortfolio} from '../demo-data.mjs';
+// The reviewed demo portfolio (docs/demo) doubles as the downloadable sample; it is real input, not sample results.
+import samplePortfolio from '../../../../docs/demo/demo-portfolio.json';
 import {api,Button,Chips,ErrorNotice,Icon,PageTitle,Steps,useApp,type Problem} from '../lib';
 
 const draftKey='torque-portfolio-json';

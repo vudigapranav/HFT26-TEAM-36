@@ -40,7 +40,7 @@ export default function Report(){
   useEffect(()=>{
     let current=true;
     setLoading(true);setError(null);setReport(null);
-    const reportId=sessionStorage.getItem('torque-report-id')||(mode==='demo'?'sample':null);
+    const reportId=sessionStorage.getItem('torque-report-id')||(__DEMO_BUILD__&&mode==='demo'?'sample':null);
     if(!reportId){setError(new Error('No assessment report is available in this session. Complete an assessment to view its evidence.'));setLoading(false);return;}
     api<AssessmentReport>('GET',`/reports/${encodeURIComponent(reportId)}`).then(result=>{
       if(current)setReport(result);
@@ -59,11 +59,11 @@ export default function Report(){
 
   return <section className="page react-report">
     <div className="report-head reveal">
-      <div className="report-intro"><span className="eyebrow orange">{mode==='demo'?'SAMPLE ASSESSMENT / THE REPORT':'YOUR ASSESSMENT / THE REPORT'}</span><h1 tabIndex={-1}>The evidence,<br/><em>in one place.</em></h1><p className="lede report-outcome">{report.outcome}</p></div>
-      <div className="report-score"><span className="eyebrow muted">{mode==='demo'?'ILLUSTRATIVE FINAL SCORE':'FINAL SCORE'}</span><Score value={report.final_score}/><p className="small muted">{mode==='demo'?'A sample report from a separate example assessment. It does not grade your current preview attempts.':'Provided by the backend from your assessment evidence.'}</p></div>
+      <div className="report-intro"><span className="eyebrow orange">{(__DEMO_BUILD__&&mode==='demo')?'SAMPLE ASSESSMENT / THE REPORT':'YOUR ASSESSMENT / THE REPORT'}</span><h1 tabIndex={-1}>The evidence,<br/><em>in one place.</em></h1><p className="lede report-outcome">{report.outcome}</p></div>
+      <div className="report-score"><span className="eyebrow muted">{(__DEMO_BUILD__&&mode==='demo')?'ILLUSTRATIVE FINAL SCORE':'FINAL SCORE'}</span><Score value={report.final_score}/><p className="small muted">{(__DEMO_BUILD__&&mode==='demo')?'A sample report from a separate example assessment. It does not grade your current preview attempts.':'Provided by the backend from your assessment evidence.'}</p></div>
     </div>
 
-    {mode==='demo'&&<div className="report-sample-note reveal" style={stagger(60)}><span className="sample-note-dot"/><span>INTERACTIVE PREVIEW</span><p>All scores, timing, hints, and activity below are sample data.</p></div>}
+    {(__DEMO_BUILD__&&mode==='demo')&&<div className="report-sample-note reveal" style={stagger(60)}><span className="sample-note-dot"/><span>INTERACTIVE PREVIEW</span><p>All scores, timing, hints, and activity below are sample data.</p></div>}
 
     <div className="evidence-ribbon reveal" style={stagger(100)}>
       <div className="ribbon-item"><Icon name="check"/><div><strong>{passed} <span className="ribbon-divider">/ {total}</span></strong><span className="eyebrow muted">TESTS PASSED</span></div></div>
@@ -86,6 +86,6 @@ export default function Report(){
     <section className="report-integrity panel reveal" style={stagger(270)} aria-labelledby="integrity-heading"><div><span className="eyebrow muted">CONTEXT, NOT CONCLUSIONS</span><h2 id="integrity-heading">Integrity <em>signals.</em></h2></div><div className="integrity-content"><div className="integrity-items">{report.integrity_signals.map((signal,index)=><span className="chip" key={`${signal.type}-${index}`}>{signal.type.replaceAll('_',' ')}<strong>{signal.count}</strong></span>)}{!report.integrity_signals.length&&<span className="small muted">No signals recorded.</span>}</div><p className="small muted">Signals for review, not automatic verdicts.</p></div></section>
 
     <div className="report-actions reveal" style={stagger(300)}><p className="small muted">Your next step starts with what you learned.</p><div className="button-row"><Button className="outline" onClick={printReport}>Save as PDF <Icon name="download"/></Button><Link className="pill" to="/portfolio">Back to portfolio <Icon name="arrow"/></Link></div></div>
-    <p className="report-bottom-note">{mode==='demo'?'DESIGN PREVIEW / SAMPLE DATA · This illustrative report is independent of your current preview edits and submissions.':'All grades and AI-efficiency values are supplied by the backend. Integrity activity is recorded only in the coding workspace.'}</p>
+    <p className="report-bottom-note">{(__DEMO_BUILD__&&mode==='demo')?'DESIGN PREVIEW / SAMPLE DATA · This illustrative report is independent of your current preview edits and submissions.':'All grades and AI-efficiency values are supplied by the backend. Integrity activity is recorded only in the coding workspace.'}</p>
   </section>;
 }
