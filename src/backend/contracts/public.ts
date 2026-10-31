@@ -67,8 +67,9 @@ export const RunResult = object({
 });
 export const ClientEvent = object({
   task_id: Id, client_ts: Type.String({ format: 'date-time' }),
-  type: Type.Enum(['tab_hidden', 'tab_visible', 'copy', 'paste']),
-  payload: object({ size: Type.Optional(Type.Integer({ minimum: 0, maximum: 1_000_000 })) }),
+  type: Type.Enum(['tab_hidden', 'tab_visible', 'copy', 'paste', 'window_blur', 'fullscreen_exit', 'page_reload']),
+  // duration_ms: time away, sent with the tab_visible that ends an interruption (browser-observed, not proof).
+  payload: object({ size: Type.Optional(Type.Integer({ minimum: 0, maximum: 1_000_000 })), duration_ms: Type.Optional(Type.Integer({ minimum: 0, maximum: 86_400_000 })) }),
 });
 export const EventsRequest = object({ events: Type.Array(ClientEvent, { minItems: 1, maxItems: 100 }) });
 export const ApiError = object({ error: object({

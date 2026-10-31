@@ -18,6 +18,8 @@ describe('start an assessment (G3/G4)',()=>{
   const calls=backend([me,['POST','/assessments',{status:201,body:validating}],['GET',`/assessments/${AID}/status`,()=>({status:200,body:++polls<2?validating:ready})],['GET',`/assessments/${AID}/tasks/question-1`,{status:200,body:candidateTask()}]]);
   const u=userEvent.setup();showApp('/ready');
   await u.click(await screen.findByRole('button',{name:/Start 60-minute assessment/}));
+  // Entry confirmation (fullscreen + monitoring notice); jsdom has no Fullscreen API.
+  await u.click(await screen.findByRole('button',{name:/Start without fullscreen/}));
   const progress=await screen.findByRole('status',{name:'Question preparation'});
   expect(progress.textContent).toMatch(/Checking every question against independent tests/);
   expect(progress.textContent).toMatch(/Semantic check passed/);
@@ -34,6 +36,8 @@ describe('start an assessment (G3/G4)',()=>{
   const calls=backend([me,['POST','/assessments',{status:201,body:assessmentState({generation:{status:'failed',progress:{},receipts:[]}})}]]);
   const u=userEvent.setup();showApp('/ready');
   await u.click(await screen.findByRole('button',{name:/Start 60-minute assessment/}));
+  // Entry confirmation (fullscreen + monitoring notice); jsdom has no Fullscreen API.
+  await u.click(await screen.findByRole('button',{name:/Start without fullscreen/}));
   await screen.findByText(/No questions were released and nothing was graded/);
   expect(calls.some(c=>c.path.includes('/tasks/'))).toBe(false);
  });
@@ -42,6 +46,8 @@ describe('start an assessment (G3/G4)',()=>{
   backend([me,['POST','/assessments',problem(409,'ASSESSMENT_ACTIVE')],['GET',`/assessments/${AID}/status`,{status:200,body:assessmentState()}],['GET',`/assessments/${AID}/tasks/question-1`,{status:200,body:candidateTask()}]]);
   const u=userEvent.setup();showApp('/ready');
   await u.click(await screen.findByRole('button',{name:/Start 60-minute assessment/}));
+  // Entry confirmation (fullscreen + monitoring notice); jsdom has no Fullscreen API.
+  await u.click(await screen.findByRole('button',{name:/Start without fullscreen/}));
   await screen.findByText('You already have an active assessment.');
   await u.click(screen.getByRole('button',{name:/Resume assessment/}));
   await screen.findByRole('heading',{name:/Fix the request summary question-1/});
@@ -50,6 +56,8 @@ describe('start an assessment (G3/G4)',()=>{
   backend([me,['POST','/assessments',problem(409,'ASSESSMENT_ACTIVE')]]);
   const u=userEvent.setup();showApp('/ready');
   await u.click(await screen.findByRole('button',{name:/Start 60-minute assessment/}));
+  // Entry confirmation (fullscreen + monitoring notice); jsdom has no Fullscreen API.
+  await u.click(await screen.findByRole('button',{name:/Start without fullscreen/}));
   await screen.findByText(/started in another browser/);
   expect(screen.queryByRole('button',{name:/Resume assessment/})).toBeNull();
  });

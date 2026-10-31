@@ -657,7 +657,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     }
   });
 
-  app.post<{ Body: { events: { task_id: string; client_ts: string; type: 'tab_hidden' | 'tab_visible' | 'copy' | 'paste'; payload: { size?: number } }[] } }>('/assessments/:id/events', { schema: { body: EventsRequest, response: { 200: ok, ...errors } } }, async request => {
+  app.post<{ Body: { events: { task_id: string; client_ts: string; type: 'tab_hidden' | 'tab_visible' | 'copy' | 'paste' | 'window_blur' | 'fullscreen_exit' | 'page_reload'; payload: { size?: number; duration_ms?: number } }[] } }>('/assessments/:id/events', { schema: { body: EventsRequest, response: { 200: ok, ...errors } } }, async request => {
     const record = await owned(request); active(record);
     for (const event of request.body.events) {
       try { taskWork(record, event.task_id); }

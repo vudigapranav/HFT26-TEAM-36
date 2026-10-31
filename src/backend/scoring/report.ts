@@ -20,7 +20,7 @@ export const CORRECTNESS_WEIGHT = 80;
 export const AI_TIERS: Tier[] = ['adept', 'master'];
 export const AIE_FALLBACK = 'scale_correctness' as const; // Q4 [LOCKED]
 export const MAX_UNLOCKS = 2;
-const INTEGRITY_TYPES = ['tab_hidden', 'copy', 'paste', 'assistant_blocked', 'extraction_flagged'] as const;
+const INTEGRITY_TYPES = ['tab_hidden', 'window_blur', 'fullscreen_exit', 'page_reload', 'copy', 'paste', 'assistant_blocked', 'extraction_flagged'] as const;
 const TIER_ORDER: Tier[] = ['novice', 'adept', 'master'];
 const MAX_REPORT_TASKS = 20; // Report contract limit
 const r2 = (x: number) => Math.round(x * 100) / 100;
@@ -98,9 +98,15 @@ export function buildReportValue(input: Parameters<Ports['buildReport']>[0]): Re
     if ((x.aie?.independence ?? 1) < 0.5) focus.add('Try more before asking the assistant for hints');
   }
 
-  const integrity_signals = INTEGRITY_TYPES
+  const integrity_signals: { type: string; count: number }[] = INTEGRITY_TYPES
     .map(type => ({ type, count: events.filter(e => e.type === type).length }))
     .filter(s => s.count > 0);
+  // Browser-observed time away (sum of duration_ms on the events that end an interruption), in whole seconds.
+  const awayMs = events.filter(e => e.type === 'tab_visible').reduce((sum, e) => {
+    const d = (e.payload as { duration_ms?: unknown }).duration_ms;
+    return sum + (typeof d === 'number' && Number.isFinite(d) && d > 0 ? Math.min(d, 86_400_000) : 0);
+  }, 0);
+  if (awayMs >= 1000) integrity_signals.push({ type: 'seconds_away', count: Math.round(awayMs / 1000) });
 
   return {
     ...(input.profile ? { claims: claimsVsDemonstrated(input.profile, tasks, rows.map(x => x.row), attemptedTaskIds(events)) } : {}),

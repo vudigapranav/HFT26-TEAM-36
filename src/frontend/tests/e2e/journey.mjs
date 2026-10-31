@@ -120,7 +120,10 @@ try{
  await step(page,'c generation progress, receipts, questions released',async()=>{
   const started=Date.now();
   await page.getByRole('button',{name:/Start 60-minute assessment/}).click();
+  await page.getByRole('dialog',{name:/A focused, 60-minute session/}).waitFor();
+  await page.getByRole('button',{name:/Enter fullscreen and start/}).click();
   await page.getByRole('status',{name:'Question preparation'}).waitFor({timeout:30000});
+  assert(await page.evaluate(()=>!!document.fullscreenElement),'fullscreen was not entered from the start click');
   await at(page,'workspace',300000);
   await page.locator('.monaco-editor').first().waitFor({timeout:60000});
   const editorMs=Date.now()-started;
@@ -181,15 +184,34 @@ try{
   const timer=await page.locator('[aria-label*="minutes"]').first().getAttribute('aria-label').catch(()=>null);
   return `timer: ${timer||'shown'}; editor restored (${before.length} chars before reload)`;
  });
- await step(page,'h finish now (server closes the session), final report',async()=>{
-  page.once('dialog',d=>void d.accept());
-  await page.getByRole('button',{name:/Finish now/}).click();
+ await step(page,'k fullscreen exits: warnings 1 and 2, return to fullscreen',async()=>{
+  if(!(await page.evaluate(()=>!!document.fullscreenElement)))await page.getByRole('button',{name:'Enter fullscreen'}).click();
+  await page.waitForFunction(()=>!!document.fullscreenElement,null,{timeout:5000});
+  await page.evaluate(()=>document.exitFullscreen());
+  await page.getByRole('alertdialog',{name:/Warning 1/}).waitFor({timeout:10000});
+  await page.getByRole('button',{name:/Return to fullscreen/}).click();
+  await page.waitForFunction(()=>!!document.fullscreenElement,null,{timeout:5000}).catch(()=>{throw new Error('Return to fullscreen did not re-enter');});
+  // Headless Chromium never hides a background page, so a real tab switch can't be produced here (tab-switch
+  // dedupe is covered by tests/live/integrity.test.tsx). A second real fullscreen exit drives Warning 2.
+  await page.evaluate(()=>document.exitFullscreen());
+  await page.getByRole('alertdialog',{name:/Warning 2/}).waitFor({timeout:10000});
+  await page.getByRole('button',{name:/Return to assessment/}).click();
+  assert(await page.getByRole('button',{name:'Enter fullscreen'}).isVisible(),'fullscreen banner missing after declining re-entry');
+  await page.locator('.monaco-editor').first().waitFor();
+  return 'warning 1 + Return to fullscreen re-entered; warning 2 + Return to assessment keeps the banner; editor intact';
+ });
+ await step(page,'h end assessment (confirmation, server closes the session), final report',async()=>{
+  await page.getByRole('button',{name:/^End assessment/}).click();
+  await page.getByRole('dialog',{name:/End the assessment now/}).waitFor();
+  await page.getByRole('button',{name:/End and see report/}).click();
   await at(page,'report',180000);
   await page.getByText(/Claims vs/).waitFor({timeout:30000});
   const text=await bodyText(page);
   for(const needle of ['QUESTION SUMMARY','Assistance evidence','Integrity'])assert(text.includes(needle),`report missing ${needle}`);
   assert(/demonstrated/i.test(text),'claims states missing');
   assert(!/No signals recorded/.test(text),'the paste from step g is missing from integrity signals');
+  assert(/fullscreen exits/i.test(text)&&/page reloads/i.test(text),'integrity summary is missing fullscreen exits or reloads');
+  assert(/Minor interruptions|Needs review/.test(text),'integrity review status missing');
   return 'report shows score, rows, AIE, integrity, claims';
  });
  await step(page,'i past reports, sign out, sign in, report still opens',async()=>{
@@ -220,6 +242,7 @@ try{
   await other.getByRole('button',{name:'Continue to focus quiz'}).click();
   await answerQuiz(other);
   await other.getByRole('button',{name:/Start 60-minute assessment/}).click();
+  await other.getByRole('button',{name:/Enter fullscreen and start|Start without fullscreen/}).click();
   await other.getByRole('alert').waitFor({timeout:30000});
   const alert=await other.getByRole('alert').innerText();
   assert(/arrays/i.test(alert),`unexpected message: ${alert}`);

@@ -36,6 +36,7 @@ const claimState=(d:boolean|null):ClaimState=>d===null?'not_tested':d?'demonstra
 const CLAIM_LABEL:Record<ClaimState,string>={demonstrated:'Demonstrated',not_demonstrated:'Not demonstrated',not_tested:'Not tested'};
 
 export default function Report(){
+  useEffect(()=>{if(document.fullscreenElement)void document.exitFullscreen().catch(()=>{});},[]);
   const {mode,toast}=useApp(),[params]=useSearchParams(),requested=params.get('id');
   const [report,setReport]=useState<AssessmentReport|null>(null);
   const [loading,setLoading]=useState(true);
@@ -88,9 +89,17 @@ export default function Report(){
     </article>)}</div></section>
 
     {report.claims&&<section className="panel reveal report-claims" style={stagger(250)} aria-labelledby="claims-heading"><span className="eyebrow muted">WHAT YOU CLAIMED, WHAT YOU SHOWED</span><h2 id="claims-heading">Claims vs <em>demonstrated.</em></h2>{report.claims.length?<div className="report-table-scroll"><table className="result-table"><caption className="report-sr-only">Each claimed DSA topic and whether this assessment demonstrated it.</caption><thead><tr><th scope="col">TOPIC</th><th scope="col">RESULT</th><th scope="col">TESTED BY</th></tr></thead><tbody>{report.claims.map(c=><tr key={c.topic} data-claim={claimState(c.demonstrated)}><th scope="row">{c.topic.replaceAll('_',' ')}</th><td>{CLAIM_LABEL[claimState(c.demonstrated)]}</td><td>{c.tested_by??'—'}</td></tr>)}</tbody></table></div>:<p className="small muted">No claimed topics are listed in this report.</p>}<p className="report-section-note">“Not tested” means no attempted question in this session covered the topic.</p></section>}
-    <section className="report-integrity panel reveal" style={stagger(270)} aria-labelledby="integrity-heading"><div><span className="eyebrow muted">CONTEXT, NOT CONCLUSIONS</span><h2 id="integrity-heading">Integrity <em>signals.</em></h2></div><div className="integrity-content"><div className="integrity-items">{report.integrity_signals.map((signal,index)=><span className="chip" key={`${signal.type}-${index}`}>{signal.type.replaceAll('_',' ')}<strong>{signal.count}</strong></span>)}{!report.integrity_signals.length&&<span className="small muted">No signals recorded.</span>}</div><p className="small muted">Signals for review, not automatic verdicts.</p></div></section>
+    <section className="report-integrity panel reveal" style={stagger(270)} aria-labelledby="integrity-heading"><div><span className="eyebrow muted">CONTEXT, NOT CONCLUSIONS</span><h2 id="integrity-heading">Integrity <em>signals.</em></h2></div><div className="integrity-content"><IntegritySummary signals={report.integrity_signals}/><div className="integrity-items">{report.integrity_signals.map((signal,index)=><span className="chip" key={`${signal.type}-${index}`}>{SIGNAL_LABELS[signal.type]??signal.type.replaceAll('_',' ')}<strong>{signal.count}</strong></span>)}{!report.integrity_signals.length&&<span className="small muted">No signals recorded.</span>}</div><p className="small muted">Browser-observed signals for review, not automatic verdicts.</p></div></section>
 
     <div className="report-actions reveal" style={stagger(300)}><p className="small muted">Your next step starts with what you learned.</p><div className="button-row"><Button className="outline" onClick={printReport}>Save as PDF <Icon name="download"/></Button><Link className="pill outline" to="/reports">Past reports <Icon name="chart"/></Link><Link className="pill" to="/portfolio">Back to portfolio <Icon name="arrow"/></Link></div></div>
     <p className="report-bottom-note">{(__DEMO_BUILD__&&mode==='demo')?'DESIGN PREVIEW / SAMPLE DATA · This illustrative report is independent of your current preview edits and submissions.':'All grades and AI-efficiency values are supplied by the backend. Integrity activity is recorded only in the coding workspace.'}</p>
   </section>;
+}
+const SIGNAL_LABELS:Record<string,string>={tab_hidden:'tab switches',window_blur:'window focus lost',fullscreen_exit:'fullscreen exits',page_reload:'page reloads',seconds_away:'seconds away',copy:'copy',paste:'paste',assistant_blocked:'assistant blocks',extraction_flagged:'extraction attempts'};
+// Interruptions = tab switches + focus losses + fullscreen exits (each counted once by the workspace monitor).
+function IntegritySummary({signals}:{signals:{type:string;count:number}[]}){
+  const count=(type:string)=>signals.find(s=>s.type===type)?.count??0;
+  const interruptions=count('tab_hidden')+count('window_blur')+count('fullscreen_exit'),away=count('seconds_away');
+  const status=interruptions===0?'No interruptions detected':interruptions>=3?'Needs review':'Minor interruptions';
+  return <div className="integrity-summary" data-status={interruptions===0?'clean':interruptions>=3?'review':'minor'}><strong>{status}</strong><span className="small">{interruptions} assessment {interruptions===1?'interruption':'interruptions'} · {count('fullscreen_exit')} fullscreen {count('fullscreen_exit')===1?'exit':'exits'}{away?` · ${away>=60?`${Math.round(away/60)} min`:`${away} s`} away`:''}</span></div>;
 }
