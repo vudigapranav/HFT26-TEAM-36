@@ -134,7 +134,9 @@ try{
   assert(!/Hidden tests/.test(await page.getByLabel('Execution results').innerText()),'Run showed hidden results');
   assert(!(await page.locator('.assistant').count()),'assistant shown on a first-set question');
   const n=await submitEveryQuestion(page);
-  await page.getByRole('button',{name:/Unlock next questions/}).click();await waitIdle(page);
+  // The server-authoritative advancement prompt appears once every question in the set is submitted.
+  await page.getByRole('dialog',{name:/Ready for the next question set/}).waitFor({timeout:30000});
+  await page.getByRole('button',{name:/Advance now/}).click();await waitIdle(page);
   await page.waitForFunction(n=>document.querySelectorAll('.question-tabs button').length>n,n,{timeout:30000});
   await assertNoLevelNames(page,'workspace after unlock 1');
   return `${n} question(s) submitted`;
@@ -149,7 +151,9 @@ try{
   await page.waitForFunction(()=>!document.querySelector('.chat-thinking'),null,{timeout:120000});
   const chat=await page.getByRole('complementary',{name:'Task assistant'}).innerText();
   const n=await submitEveryQuestion(page);
-  await page.getByRole('button',{name:/Unlock next questions/}).click();await waitIdle(page);
+  // The server-authoritative advancement prompt appears once every question in the set is submitted.
+  await page.getByRole('dialog',{name:/Ready for the next question set/}).waitFor({timeout:30000});
+  await page.getByRole('button',{name:/Advance now/}).click();await waitIdle(page);
   await page.waitForFunction(n=>document.querySelectorAll('.question-tabs button').length>n,n,{timeout:30000});
   await assertNoLevelNames(page,'workspace after unlock 2');
   return `${n} question(s) in the set; assistant: ${/unavailable|not available/i.test(chat)?'clean unavailable message':'replied'}`;
@@ -177,11 +181,10 @@ try{
   const timer=await page.locator('[aria-label*="minutes"]').first().getAttribute('aria-label').catch(()=>null);
   return `timer: ${timer||'shown'}; editor restored (${before.length} chars before reload)`;
  });
- await step(page,'h submit all questions, open the report',async()=>{
-  await page.getByRole('button',{name:/Submit all questions/}).click();await waitIdle(page);
-  await page.getByText('Every open question is submitted.').waitFor({timeout:180000});
-  await page.getByRole('link',{name:/View current report/}).click();
-  await at(page,'report');
+ await step(page,'h finish now (server closes the session), final report',async()=>{
+  page.once('dialog',d=>void d.accept());
+  await page.getByRole('button',{name:/Finish now/}).click();
+  await at(page,'report',180000);
   await page.getByText(/Claims vs/).waitFor({timeout:30000});
   const text=await bodyText(page);
   for(const needle of ['QUESTION SUMMARY','Assistance evidence','Integrity'])assert(text.includes(needle),`report missing ${needle}`);

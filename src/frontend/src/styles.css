@@ -23,3 +23,9 @@ body.coding{overflow:hidden}.coding .header{height:69px;padding:0 25px}.coding .
 @media print{.header,.app-footer,.report-actions,.ambient-orbit,.arrival,#toast{display:none!important}.page{padding:0}.report-grid{break-inside:avoid}.panel{break-inside:avoid}.print-only{display:block}.report-score strong{color:black}.report-head{margin-top:0}body{background:white}}
 
 @media(max-width:700px){.code-highlight,.line-numbers{font-size:12px}}
+
+/* Advancement prompt (server-authoritative: shown only when the backend reports the next set is unlockable). */
+.advance-offer{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(32,33,29,.45);padding:16px}
+.advance-card{max-width:460px;width:100%;padding:28px;background:var(--paper,#f1f0e9)}
+.advance-card h2{margin:10px 0 8px}
+.advance-card .button-row{margin-top:20px;gap:12px;flex-wrap:wrap}

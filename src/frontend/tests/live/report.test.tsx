@@ -20,7 +20,7 @@ describe('live report (G5)',()=>{
   backend([me,['GET','/reports/report-a1',{status:200,body:report}]]);
   showApp('/report');
   await screen.findByRole('img',{name:'Final score: 72.5 out of 100'});
-  const summary=screen.getByRole('table',{name:/Tests passed, time spent/});
+  const summary=screen.getByRole('table',{name:/Tests fixed beyond the starter code, time spent/});
   expect(within(summary).getByText('5 / 5 · 100%')).toBeTruthy();
   expect(within(summary).getByText('3 / 5 · 60%')).toBeTruthy();
   expect(within(summary).getByText('10m 20s')).toBeTruthy();

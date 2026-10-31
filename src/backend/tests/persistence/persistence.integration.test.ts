@@ -518,7 +518,8 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
   const cookie=await account();const id=await create(cookie);
   expect((await call('POST',`/assessments/${id}/tasks/question-1/submit`,cookie,{})).statusCode).toBe(200);
   const before=(await call('GET',`/reports/report-${id}`,cookie)).json();
-  expect(before.claims).toContainEqual({topic:'arrays',tested_by:bank.novice![0]!.task_id,demonstrated:true});
+  // The novice task may be an evidence-selected reviewed variant (its own task id); the claim binding is what matters.
+  expect(before.claims).toContainEqual({topic:'arrays',tested_by:before.tasks[0].task_id,demonstrated:true});
   const uploaded=await call('POST','/portfolio',cookie,{...portfolio,dsa_topics_solved:['hashing']});
   expect(uploaded.statusCode).toBe(200);
   expect(uploaded.json().profile.claimed_topics).toEqual(['hashing']);
