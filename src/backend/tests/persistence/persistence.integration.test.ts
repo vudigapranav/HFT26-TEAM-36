@@ -12,6 +12,9 @@ import { readAuthUser } from '../../api/auth.js';
 import { migrate } from '../../api/db/migrate.js';
 import { readConfig } from '../../api/config.js';
 import type { Ports } from '../../contracts/seams.js';
+
+// Test-only validation double: persistence is isolated from grading; real oracle verification is covered by generation suites.
+const certifiedFixture: Ports['validateTask'] = async ({task}) => ({kind:'ok',value:{task_id:task.task_id,valid:true,structural_valid:true,semantic_verified:true,family_id:task.family_id??'persistence-fixture',gates:[{gate:'differential',status:'pass',reason:'Test-only certificate double'}]}});
 import { checkResponseContract } from '../helpers/response-contract.js';
 
 const enabled = process.env.TORQUECODE_ISOLATED_TEST_DB === '1';
@@ -31,7 +34,7 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
  const chat:Ports['chat'] = async () => ({kind:'ok',value:{content:'Trace the retained event count after each operation.',model:'test'}});
  async function start(overrides:Partial<Ports>={},trust_proxy=false,generation_timeout_ms=120000) {
   const seed=bank.novice![0]!;
-  const created=await buildApp({ports:createWiredPorts(seed,{runTests,chat,...overrides}),auth,trust_proxy,assessment:{store:new PostgresAssessmentStore(pool),generation_timeout_ms,seed,seed_bank:bank,origin,runner:'isolated',authenticate:async req=>(await readAuthUser(req,auth))?.user_id}});
+  const created=await buildApp({ports:createWiredPorts(seed,{runTests,chat,validateTask:certifiedFixture,...overrides}),auth,trust_proxy,assessment:{store:new PostgresAssessmentStore(pool),generation_timeout_ms,seed,seed_bank:bank,origin,runner:'isolated',authenticate:async req=>(await readAuthUser(req,auth))?.user_id}});
   await created.ready(); apps.push(created); return created;
  }
  const call=async(method:'GET'|'POST'|'PUT',url:string,cookie?:string,payload?:object) => {
@@ -44,7 +47,7 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
   const response=await call('POST','/auth/login',undefined,creds);
   expect(response.statusCode).toBe(200);return String(response.headers['set-cookie']).split(';')[0]!;
  }
- async function create(cookie:string) {
+ async function create(cookie:string,terminal:'ready'|'failed'='ready') {
   expect((await call('POST','/portfolio',cookie,portfolio)).statusCode).toBe(200);
   const quiz=await call('GET','/onboarding-quiz',cookie);
   expect((await call('POST','/onboarding-quiz',cookie,{answers:quiz.json().questions.map((q:{id:string;options:{id:string}[]})=>({question_id:q.id,option_id:q.options[0]!.id}))})).statusCode).toBe(200);
@@ -52,7 +55,7 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
   const id=response.json().assessment_id;
   for(let i=0;i<80;i++){
    const status=await call('GET',`/assessments/${id}/status`,cookie);
-   if(status.json().generation?.status==='ready')return id;
+   if(status.json().generation?.status===terminal)return id;
    await new Promise(r=>setTimeout(r,50));
   }throw new Error('Generation fallback did not finish');
  }
@@ -80,6 +83,42 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
   const events=await pool.query('SELECT type FROM events WHERE assessment_id=$1',[id]);
   expect(events.rows.map(e=>e.type)).toEqual(expect.arrayContaining(['assistant_message','hint_served','run','submit']));
   expect((await pool.query('SELECT status,source FROM generation_jobs WHERE assessment_id=$1',[id])).rows[0]).toEqual({status:'ready',source:'seed_bank'});
+ });
+ it.each(['ready','validating'] as const)('revalidates legacy %s tasks without overwriting saved work',async(status)=>{
+  const cookie=await account();const id=await create(cookie);const base=`/assessments/${id}`;
+  const files=bank.novice![0]!.reference_files;
+  await call('PUT',`${base}/tasks/question-1/files`,cookie,{files});
+  await call('POST',`${base}/tasks/question-1/submit`,cookie,{});
+  await call('POST',`${base}/tier/upgrade`,cookie,{});
+  const before=(await call('GET',`${base}/status`,cookie)).json();
+  const runs=(await pool.query('SELECT count(*)::int AS n FROM runs WHERE assessment_id=$1',[id])).rows[0].n;
+  await app.close();
+  await pool.query("UPDATE generation_jobs SET status=$2,progress=$3::jsonb WHERE assessment_id=$1",[id,status,JSON.stringify(status==='validating'?{revalidate_existing:true}:{})]);
+  const forbidden:Ports['generateAssessment']=async()=>{throw Error('Revalidation must not replace existing tasks');};
+  app=await start({generateAssessment:forbidden});
+  for(let i=0;i<80;i++){
+   const after=(await call('GET',`${base}/status`,cookie)).json();
+   if(after.generation.status==='ready'){
+    expect(after.generation.verification.semantic_verified).toBe(true);
+    expect(after.expires_at).toBe(before.expires_at);expect(after.unlocks_used).toBe(before.unlocks_used);
+    expect((await call('GET',`${base}/tasks/question-1`,cookie)).json().files).toEqual(files);
+    expect((await pool.query('SELECT count(*)::int AS n FROM runs WHERE assessment_id=$1',[id])).rows[0].n).toBe(runs);
+    return;
+   }
+   await new Promise(r=>setTimeout(r,50));
+  }throw Error('Legacy task revalidation did not finish');
+ });
+ it('does not publish unchecked fallback tasks or fabricate a grade from a legacy valid flag',async()=>{
+  await app.close();
+  app=await start({validateTask:async({task})=>({kind:'ok',value:{task_id:task.task_id,valid:true,gates:[{gate:'reference',status:'pass',reason:'Legacy consistency only'}]}})});
+  const cookie=await account();const id=await create(cookie,'failed');const base=`/assessments/${id}`;
+  const status=(await call('GET',`${base}/status`,cookie)).json();
+  expect(status.available_task_ids).toEqual([]);expect(status.questions).toEqual([]);
+  expect(status.generation.verification.semantic_verified).toBe(false);
+  expect((await call('GET',`${base}/tasks/question-1`,cookie)).statusCode).toBe(409);
+  expect((await call('GET',`/reports/report-${id}`,cookie)).statusCode).toBe(503);
+  expect((await pool.query('SELECT count(*)::int AS n FROM runs WHERE assessment_id=$1',[id])).rows[0].n).toBe(0);
+  expect((await pool.query('SELECT expired_finalized FROM assessments WHERE id=$1',[id])).rows[0].expired_finalized).toBe(true);
  });
  it('recovers expiration exactly once and lists only the caller’s durable reports',async()=>{
   const cookie=await account();const id=await create(cookie);const other=await account('other@example.org');
@@ -185,7 +224,7 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
    input.progress({assessment_id:'private-provider-id',status:'validating',tier:'master'});
    return {kind:'ok',value:generated};
   };
-  const validateTask:Ports['validateTask']=async ({task})=>({kind:'ok',value:{task_id:task.task_id,valid:true,gates:[{gate:'reference',status:'pass',reason:'Reference passed all tests three times'}]}});
+  const validateTask:Ports['validateTask']=async ({task})=>({kind:'ok',value:{task_id:task.task_id,valid:true,structural_valid:true,semantic_verified:true,gates:[{gate:'reference',status:'pass',reason:'Reference passed all tests three times'}]}});
   app=await start({generateAssessment,validateTask});
   const cookie=await account();const id=await create(cookie);
   const state=await call('GET',`/assessments/${id}/status`,cookie);
@@ -208,7 +247,7 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
       kind:'ok',
       value:{
         task_id:task.task_id,
-        valid:true,
+        valid:true,structural_valid:true,semantic_verified:true,
         gates:[{gate:'reference',status:'pass',reason:'Reference passed'}]
       }
     });
@@ -227,10 +266,10 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
 
  it('keeps the seed bank when deterministic validation rejects generated artifacts',async()=>{
   await app.close();
-  const generateAssessment:Ports['generateAssessment']=async()=>({kind:'ok',value:{novice:bank.novice![0]!,adept:bank.adept![0]!,master:bank.master![0]!}});
-  const validateTask:Ports['validateTask']=async ({task})=>({kind:'ok',value:{task_id:task.task_id,valid:false,gates:[{gate:'reference',status:'fail',reason:'Reference failed'}]}});
+  const generateAssessment:Ports['generateAssessment']=async()=>({kind:'ok',value:{novice:{...bank.novice![0]!,source:'generated'},adept:{...bank.adept![0]!,source:'generated'},master:{...bank.master![0]!,source:'generated'}}});
+  const validateTask:Ports['validateTask']=async (input,context)=>input.task.source==='seed_bank'?certifiedFixture(input,context):({kind:'ok',value:{task_id:input.task.task_id,valid:false,gates:[{gate:'reference',status:'fail',reason:'Reference failed'}]}});
   app=await start({generateAssessment,validateTask});const cookie=await account();const id=await create(cookie);
-  expect((await call('GET',`/assessments/${id}/status`,cookie)).json().generation).toMatchObject({status:'ready',source:'seed_bank',receipts:[]});
+  expect((await call('GET',`/assessments/${id}/status`,cookie)).json().generation).toMatchObject({status:'ready',source:'seed_bank'});
  });
  it('preserves trusted event occurrence time when the transaction is flushed',async()=>{
   const cookie=await account();const id=await create(cookie);
@@ -266,10 +305,11 @@ describe.skipIf(!enabled)('K11 real PostgreSQL durability', () => {
   const generateAssessment:Ports['generateAssessment']=async()=>({kind:'ok',value:{novice:bank.novice![0]!,adept:bank.adept![0]!,master:bank.master![0]!}});
   const validateTask:Ports['validateTask']=async({task})=>{
    await new Promise(r=>setTimeout(r,150));
-   return {kind:'ok',value:{task_id:task.task_id,valid:true,gates:[{gate:'reference',status:'pass',reason:'Reference passed'}]}};
+   return {kind:'ok',value:{task_id:task.task_id,valid:true,structural_valid:true,semantic_verified:true,gates:[{gate:'reference',status:'pass',reason:'Reference passed'}]}};
   };
-  app=await start({generateAssessment,validateTask},false,30);const cookie=await account();const id=await create(cookie);
-  expect((await call('GET',`/assessments/${id}/status`,cookie)).json().generation.source).toBe('seed_bank');
+  app=await start({generateAssessment,validateTask},false,30);const cookie=await account();const id=await create(cookie,'failed');
+  expect((await call('GET',`/assessments/${id}/status`,cookie)).json().generation.status).toBe('failed');
+  expect((await call('GET',`/reports/report-${id}`,cookie)).statusCode).toBe(503);
  });
  it('ignores provider progress emitted after timeout has completed seed fallback',async()=>{
   await app.close();

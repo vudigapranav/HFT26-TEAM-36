@@ -146,9 +146,10 @@ export const ReportHistory = object({ reports: Type.Array(object({
 }), {maxItems:100}), next_cursor: Type.Optional(Id) });
 export const AssessmentState = object({
   generation: Type.Optional(object({
+    verification: Type.Optional(object({ policy: Type.Literal('trusted-families-v1'), semantic_verified: Type.Boolean() })),
     status: Type.Enum(['queued','generating','validating','ready','failed']),
     progress: object({ status: Type.Optional(Type.Enum(['generating','validating'])) }),
-    receipts: Type.Array(object({ gate: text(80), status: Type.Enum(['pass','fail','skipped']), reason: text(300) }), {maxItems:30}),
+    receipts: Type.Array(object({ gate: text(80), status: Type.Enum(['pass','fail','skipped','not_applicable']), reason: text(300) }), {maxItems:30}),
     source: Type.Optional(Type.Enum(['generated','seed_bank'])),
   })),
   assessment_id: Id,

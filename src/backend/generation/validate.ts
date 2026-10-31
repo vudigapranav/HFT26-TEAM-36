@@ -6,6 +6,7 @@ import type { File, Gate, PrivateTask, Topic, ValidationReceipt, InternalRunResu
 import type { Ports } from '../contracts/seams.js';
 import { publicTask } from '../api/public-projections.js';
 import { validateRequest } from '../runner/dockerRunner.js';
+import { resolveFamily, matchesContract, trustedGrading, oracleTestFile, sameFiles } from './families.js';
 import { checkOutput, solutionFingerprint, STANDARD_POLICY } from '../llm/guards.js';
 
 type Scan = { errors: string[]; unclaimed?: string[]; format_errors?: string[] };
@@ -114,136 +115,97 @@ function complete(result: InternalRunResult, task: PrivateTask): boolean {
 }
 
 export function createValidationEngine(runTests: Ports['runTests']): Ports['validateTask'] {
-  return async ({ task, claimed_topics }, context) => {
+  return async ({task,claimed_topics},context) => {
     context.signal.throwIfAborted();
-    const gates: Gate[] = [];
-    const add = (gate: Gate['gate'], status: Gate['status'], reason: string) =>
-      gates.push({ gate, status, reason });
-    const done = () => ({
-      kind: 'ok' as const,
-      value: {
-        task_id: task.task_id,
-        valid: gates.length > 0 && gates.every(g => g.status === 'pass'),
-        gates,
-      } satisfies ValidationReceipt,
-    });
-    const skip = (reason: string, names: Gate['gate'][]) => {
-      for (const name of names) add(name, 'skipped', reason);
+    const gates:Gate[]=[];
+    const add=(gate:Gate['gate'],status:Gate['status'],reason:string)=>gates.push({gate,status,reason});
+    const skip=(reason:string,names:Gate['gate'][])=>{for(const name of names)add(name,'skipped',reason);};
+    let family:Awaited<ReturnType<typeof resolveFamily>>;
+    const done=()=>{
+      const passed=(name:Gate['gate'])=>gates.find(g=>g.gate===name)?.status==='pass';
+      const structural_valid=gates.filter(g=>g.gate!=='differential').every(g=>g.status==='pass'||g.status==='not_applicable') && gates.length===10;
+      const semantic_verified=!!family&&passed('differential')&&passed('examples')&&passed('topics')&&passed('format')&&passed('reference');
+      return {kind:'ok' as const,value:{task_id:task.task_id,valid:structural_valid&&semantic_verified,structural_valid,semantic_verified,...(family?{family_id:family.id}:{}),gates} satisfies ValidationReceipt};
     };
-
-    if (!validStructure(task)) {
-      add('schema', 'fail', 'Invalid task structure or trusted test manifest');
-      skip('Schema validation failed', [
-        'topics', 'imports', 'format', 'examples', 'leakage',
-        'reference', 'starter', 'differential', 'performance',
+    if(!validStructure(task)){
+      add('schema','fail','Invalid task structure or trusted test manifest');
+      skip('Schema validation failed',['topics','imports','format','examples','leakage','reference','starter','differential','performance']);
+      return done();
+    }
+    add('schema','pass','Complete task and test manifest');
+    try {family=await resolveFamily(task);}catch{ /* registry failure is unverified, never a pass */ }
+    if(!family){
+      skip('No supported trusted task family; independent correctness is unverified',['topics','imports','format','examples','leakage','reference','starter','differential','performance']);
+      return done();
+    }
+    let topics:Scan,imports:Scan;
+    try{
+      [topics,imports]=await Promise.all([
+        scanner('topic_scan.py',task.reference_files,claimed_topics,context.signal),
+        scanner('import_check.py',[...task.files,...task.reference_files,...task.tests.map(t=>({path:t.path,content:t.content,editable:false}))],claimed_topics,context.signal),
       ]);
-      return done();
+    }catch{
+      add('topics','fail','Static scanner unavailable');add('imports','fail','Static scanner unavailable');
+      skip('Static analysis incomplete',['format','examples','leakage','reference','starter','differential','performance']);return done();
     }
-    add('schema', 'pass', 'Complete task and test manifest');
-
-    let topics: Scan;
-    let imports: Scan;
-    try {
-      [topics, imports] = await Promise.all([
-        scanner('topic_scan.py', task.reference_files, claimed_topics, context.signal),
-        scanner('import_check.py', [
-          ...task.files, ...task.reference_files,
-          ...task.tests.map(t => ({ path: t.path, content: t.content, editable: false })),
-        ], claimed_topics, context.signal),
-      ]);
-    } catch {
-      add('topics', 'fail', 'Static scanner unavailable');
-      add('imports', 'fail', 'Static scanner unavailable');
-      skip('Static analysis incomplete', ['format', 'examples', 'leakage', 'reference', 'starter', 'differential', 'performance']);
-      return done();
+    const sameTopics=JSON.stringify([...task.dsa_topics].sort())===JSON.stringify([...family.base.dsa_topics].sort());
+    const topicOK=sameTopics&&task.tier===family.base.tier&&task.task_type===family.base.task_type&&task.dsa_topics.every(t=>claimed_topics.includes(t))&&!topics.errors.length&&!topics.unclaimed?.length;
+    add('topics',topicOK?'pass':'fail',topicOK?'Trusted family topics are claimed; implementation provenance checked below':'Family topics, task type or allowed constructs do not match candidate claims');
+    add('imports',imports.errors.length?'fail':'pass',imports.errors.length?'Disallowed imports or code execution':'Imports allowed');
+    const trusted=trustedGrading(task,family);
+    const formatOK=trusted&&!imports.format_errors?.length;
+    add('format',formatOK?'pass':'fail',formatOK?'Grading tests exactly match the server-owned family template':'Test provenance or supported runner format rejected; caller tests will not execute');
+    const contractOK=matchesContract(task,family);
+    add('examples',contractOK?'pass':'fail',contractOK?'Pinned contract and structured examples agree with independent oracle':'Statement or example differs from the pinned family contract');
+    const noLeak=leakFree(task);
+    add('leakage',noLeak?'pass':'fail',noLeak?'No detected solution-code leakage; prose hints remain heuristic':'Starter or hints expose reference logic');
+    if(!topicOK||imports.errors.length||imports.format_errors?.length||!contractOK||!noLeak){
+      skip('Task contract or safety validation failed',['reference','starter','differential','performance']);return done();
     }
-
-    const topicOK = task.dsa_topics.every(t => claimed_topics.includes(t)) &&
-      topics.errors.length === 0 && !topics.unclaimed?.length;
-    add('topics', topicOK ? 'pass' : 'fail',
-      topicOK ? 'Topics are supported by candidate claims' : 'Unclaimed topic or invalid source');
-
-    add('imports', imports.errors.length ? 'fail' : 'pass',
-      imports.errors.length ? 'Disallowed imports or code execution' : 'Imports allowed');
-
-    add('format', imports.format_errors?.length ? 'fail' : 'pass',
-      imports.format_errors?.length ? 'Unsupported test structure' : 'Static runner format checks passed');
-
-    add('examples', 'pass', 'No statement examples declared; covered by visible tests');
-    add('leakage', leakFree(task) ? 'pass' : 'fail',
-      leakFree(task) ? 'No detected solution leakage' : 'Starter or hints expose reference logic');
-
-    if (gates.some(g => g.status === 'fail')) {
-      skip('Static validation failed', ['reference', 'starter', 'differential', 'performance']);
-      return done();
-    }
-
-    const execute = async (files: File[]) => {
-      try {
-        return await runTests({
-          task_id: task.task_id, files, tests: task.tests,
-          mode: 'submit', limits: task.limits,
-        }, context);
-      } catch {
-        return { kind: 'unavailable' as const, code: 'SANDBOX_UNAVAILABLE' as const,
-          message: 'Trusted runner unavailable' };
-      }
+    const independent=oracleTestFile(family);
+    const selected=trusted?[...task.tests,independent]:[independent];
+    const expected=new Map(selected.flatMap(t=>t.ids.map(id=>[id,t.visibility] as const)));
+    const oracleIds=new Set(independent.ids);
+    const execute=async(files:File[],tests:PrivateTask['tests'])=>{
+      try{return await runTests({task_id:task.task_id,files,tests,mode:'submit',limits:{...family!.base.limits}},context);}
+      catch{context.signal.throwIfAborted();return {kind:'unavailable' as const,code:'SANDBOX_UNAVAILABLE' as const,message:'Trusted runner unavailable'};}
     };
-
-    const referenceRuns: InternalRunResult[] = [];
-    for (let i = 0; i < 3; i++) {
-      const run = await execute(task.reference_files);
-      if (run.kind !== 'ok') {
-        if (run.kind === 'unavailable' && /not supported/i.test(run.message)) {
-          const format = gates.find(g => g.gate === 'format')!;
-          format.status = 'fail';
-          format.reason = 'Unsupported isolated-runner task format';
+    const verified:InternalRunResult[]=[];
+    let oraclePass=true,referencePass=trusted;
+    for(let i=0;i<3;i++){
+      const run=await execute(task.reference_files,selected);
+      if(run.kind!=='ok'){
+        if(run.kind==='unavailable'&&/not supported/i.test(run.message)){
+          const format=gates.find(g=>g.gate==='format')!;format.status='fail';format.reason='Unsupported isolated-runner task format';
         }
-        add('reference', run.kind === 'unavailable' ? 'skipped' : 'fail',
-          'Reference execution not verified');
-        skip('Reference not verified', ['starter', 'differential', 'performance']);
-        return done();
+        add('reference',run.kind==='unavailable'?'skipped':'fail','Reference execution not verified');
+        skip('Independent reference execution unavailable',['starter','differential','performance']);return done();
       }
-      if (!complete(run.value, task) || run.value.passed !== run.value.total) {
-        add('reference', 'fail', 'Reference failed a trusted test');
-        skip('Reference failed', ['starter', 'differential', 'performance']);
-        return done();
-      }
-      referenceRuns.push(run.value);
+      const result=run.value;
+      const completeRun=complete(result,{...task,tests:selected})&&result.tests.every(t=>expected.get(t.id)===t.visibility&&['pass','fail','error','timeout'].includes(t.status)&&Number.isFinite(t.duration_ms)&&t.duration_ms>=0);
+      if(!completeRun){add('reference','fail','Incomplete or invalid trusted runner evidence');skip('Runner evidence rejected',['starter','differential','performance']);return done();}
+      oraclePass&&=result.tests.filter(t=>oracleIds.has(t.id)).every(t=>t.status==='pass');
+      referencePass&&=result.tests.every(t=>t.status==='pass');
+      verified.push(result);
+      if(!oraclePass||!referencePass)break;
     }
-    add('reference', 'pass', 'Reference passed all tests three times');
-
-    const starter = await execute(task.files);
-    if (starter.kind !== 'ok' || !complete(starter.value, task)) {
-      add('starter', starter.kind === 'unavailable' ? 'skipped' : 'fail',
-        'Starter execution not verified');
-      skip('Starter not verified', ['differential', 'performance']);
-      return done();
+    const knownReference=sameFiles(task.reference_files,family.base.reference_files);
+    if(!knownReference){const topic=gates.find(g=>g.gate==='topics')!;topic.status='fail';topic.reason='Reference implementation is outside the reviewed family; algorithm-topic coverage is not established';}
+    add('reference',referencePass&&verified.length===3?'pass':'fail',referencePass&&verified.length===3?'Reference passed trusted grading and oracle assertions in three runs':'Reference failed trusted tests or caller-test provenance was rejected');
+    add('differential',oraclePass&&verified.length===3?'pass':'fail',oraclePass&&verified.length===3?`Reference matched independent oracle on ${independent.ids.length} fixed and seeded-random cases in three isolated runs`:'Reference disagrees with independent oracle or repeated verification is incomplete');
+    if(!referencePass||!oraclePass||!knownReference||!formatOK){skip('Reference not eligible for release',['starter','performance']);return done();}
+    const starter=await execute(task.files,task.tests);
+    if(starter.kind!=='ok'||!complete(starter.value,task)){
+      add('starter',starter.kind==='unavailable'?'skipped':'fail','Starter execution not verified');skip('Starter not verified',['performance']);return done();
     }
-
-    const statuses = new Map(starter.value.tests.map(t => [t.id, t.status]));
-    const f2p = task.f2p_ids.every(id => statuses.get(id) === 'fail');
-    const p2p = task.p2p_ids.every(id => statuses.get(id) === 'pass');
-    add('starter', f2p && p2p ? 'pass' : 'fail',
-      f2p && p2p ? 'Starter F2P/P2P verified' : 'Starter outcomes contradict manifest');
-
-    const signature = (r: InternalRunResult) =>
-      r.tests.map(t => `${t.id}:${t.status}`).sort().join('|');
-    const stable = referenceRuns.every(r => signature(r) === signature(referenceRuns[0]!));
-    add('differential', stable ? 'pass' : 'fail',
-      stable ? 'Reference deterministic across 3 runs (no brute-force oracle supplied)' : 'Reference results inconsistent');
-
-    const perfIds = task.tests.flatMap(t => t.ids)
-      .filter(id => /performance|perf|large_window/i.test(id));
-    const perfOK = task.tier !== 'master' || (
-      perfIds.length > 0 &&
-      perfIds.every(id =>
-        referenceRuns.every(r => r.tests.find(t => t.id === id)?.status === 'pass') &&
-        statuses.get(id) === 'fail')
-    );
-    add('performance', perfOK ? 'pass' : 'fail',
-      perfOK ? 'Performance verified or not applicable' : 'Master performance gate failed');
-
+    const statuses=new Map(starter.value.tests.map(t=>[t.id,t.status]));
+    const starterOK=task.f2p_ids.every(id=>statuses.get(id)==='fail')&&task.p2p_ids.every(id=>statuses.get(id)==='pass');
+    add('starter',starterOK?'pass':'fail',starterOK?'Starter F2P/P2P verified against the trusted family answer key':'Starter outcomes contradict the trusted family manifest');
+    if(!family.performanceIds.length)add('performance','not_applicable','This family has no performance requirement');
+    else {
+      const perfOK=family.performanceIds.every(id=>verified.every(r=>r.tests.find(t=>t.id===id)?.status==='pass')&&statuses.get(id)==='fail');
+      add('performance',perfOK?'pass':'fail',perfOK?'Pinned workload and elapsed-time assertion passed for the reference and failed for the starter; no asymptotic proof is claimed':'Trusted family performance workload was not verified');
+    }
     return done();
   };
 }

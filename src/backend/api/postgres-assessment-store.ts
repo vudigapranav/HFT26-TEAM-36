@@ -6,6 +6,7 @@ import type { InternalRunResult } from '../contracts/internal.js';
 import { AssessmentStore, type AssessmentRecord, type StoredProfile, type GenerationJob } from './assessment-store.js';
 import { publicRun } from './public-projections.js';
 import { HttpProblem } from './errors.js';
+import { VALIDATION_POLICY } from '../generation/families.js';
 import { TIER_ORDER } from './tier-policy.js';
 
 type Unit = {
@@ -140,7 +141,7 @@ export class PostgresAssessmentStore extends AssessmentStore {
   return (await this.pool.query("SELECT user_id,id FROM assessments WHERE expires_at<=now() AND NOT expired_finalized ORDER BY expires_at LIMIT 20")).rows;
  }
  override async pendingGenerations(): Promise<{user_id:string;id:string}[]> {
-  return (await this.pool.query("SELECT user_id,assessment_id AS id FROM generation_jobs WHERE status IN ('queued','generating','validating') ORDER BY created_at LIMIT 20")).rows;
+  return (await this.pool.query("SELECT g.user_id,g.assessment_id AS id FROM generation_jobs g JOIN assessments a ON a.id=g.assessment_id WHERE a.status='active' AND (g.status IN ('queued','generating','validating') OR (g.status='ready' AND (g.progress->>'verification_policy' IS DISTINCT FROM $1 OR g.progress->>'semantic_verified' IS DISTINCT FROM 'true'))) ORDER BY g.created_at LIMIT 20",[VALIDATION_POLICY])).rows;
  }
  override async withGenerationClaim(id:string,action:()=>Promise<void>) {
   const client = await this.pool.connect();

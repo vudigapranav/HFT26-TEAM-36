@@ -1,7 +1,7 @@
 // FIXED, trusted test templates (K6). The model never writes test code: these templates turn
 // structured cases into pytest files that call the candidate function with plain data
-// (the R3 split-container format), and expected values come from running the reference.
-import type { Case } from './spec.js';
+// (the R3 split-container format), and expected values come from independent family oracles.
+type Case = {args: unknown[]; kwargs: Record<string, unknown>; visibility: 'visible'|'hidden'};
 
 /** Python source literal for a plain-data value (JSON scalars/arrays/objects or R3-tagged values). */
 export function pyLiteral(value: unknown): string {
@@ -32,44 +32,8 @@ export function pyLiteral(value: unknown): string {
 const call = (func: string, c: Case) =>
   `${func}(${[...c.args.map(pyLiteral), ...Object.entries(c.kwargs).map(([k, v]) => `${k}=${pyLiteral(v)}`)].join(', ')})`;
 
-/**
- * Probe: runs each case against the reference inside the TRUSTED grader and reports the encoded
- * result through the failure message. The nonce lives only in this (grader-side) file, so the
- * reference running in the worker can't forge a probe line.
- */
-export function renderProbe(module: string, func: string, cases: Case[], nonce: string): string {
-  // The marker is assembled at runtime so pytest's echo of these source lines never matches it.
-  const lines = ['import protocol', `from ${module} import ${func}`, '', `MARK = "TORQUE_PROBE " + ${JSON.stringify(nonce)}`, ''];
-  cases.forEach((c, i) => {
-    lines.push(`def test_probe_${i}():`, '    try:', `        value = ${call(func, c)}`, '    except Exception as exc:',
-      `        raise AssertionError(MARK + " ${i} raises " + type(exc).__name__)`,
-      `    raise AssertionError(MARK + " ${i} value " + protocol.dumps(protocol.encode(value)))`, '');
-  });
-  return lines.join('\n');
-}
-
 export type Outcome = { kind: 'value'; value: unknown } | { kind: 'raises'; exception: string };
-const RAISABLE = new Set(['ValueError', 'TypeError', 'KeyError', 'IndexError', 'ZeroDivisionError', 'ArithmeticError', 'LookupError', 'RuntimeError', 'NotImplementedError', 'AttributeError', 'OverflowError']);
-
-/** Reads probe outcomes from the grader's output; null unless every case reported exactly once. */
-export function parseProbe(output: string, nonce: string, count: number): Outcome[] | null {
-  const outcomes = new Map<number, Outcome>();
-  // Only pytest's failure-detail lines ("E   AssertionError: ..."), not the short summary.
-  for (const match of output.matchAll(new RegExp(`^E\\s+AssertionError: TORQUE_PROBE ${nonce} (\\d+) (value|raises) (.+)$`, 'gm'))) {
-    const index = Number(match[1]);
-    if (outcomes.has(index)) return null;
-    if (match[2] === 'raises') {
-      if (!RAISABLE.has(match[3]!.trim())) return null;
-      outcomes.set(index, { kind: 'raises', exception: match[3]!.trim() });
-    } else {
-      try { outcomes.set(index, { kind: 'value', value: JSON.parse(match[3]!) }); } catch { return null; }
-    }
-  }
-  if (outcomes.size !== count) return null;
-  return Array.from({ length: count }, (_, i) => outcomes.get(i)!);
-}
-
-/** The released test file: plain-data calls with expected values computed from the reference. */
+/** Render server-owned cases with independently specified expected values. */
 export function renderTests(module: string, func: string, cases: { c: Case; outcome: Outcome; name: string }[]): string {
   const lines = ['import pytest', '', `from ${module} import ${func}`, ''];
   for (const { c, outcome, name } of cases) {

@@ -13,6 +13,7 @@ import type { RunnerStatus } from './runner-status.js';
 import { HttpProblem } from './errors.js';
 import { publicRun, publicTask } from './public-projections.js';
 import { createAssistant } from '../llm/assistant.js';
+import { VALIDATION_POLICY } from '../generation/families.js';
 import { createHintProvider } from '../llm/hints.js';
 
 export type AssessmentOptions = {
@@ -80,8 +81,9 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     return `question-${index + 1}`;
   };
 
+  const certified = (record: AssessmentRecord) => !store.durable || (record.generation?.progress.verification_policy === VALIDATION_POLICY && record.generation.progress.semantic_verified === true);
   const taskWork = (record: AssessmentRecord, id: string): TierWork => {
-    if (record.generation && record.generation.status !== 'ready') throw new HttpProblem(409, 'ASSESSMENT_GENERATING');
+    if (record.generation && (record.generation.status !== 'ready' || !certified(record))) throw new HttpProblem(409, 'ASSESSMENT_GENERATING');
     for (const tier of TIER_ORDER) {
       const work = works(record, tier).find(w => w.task.task_id === id || publicId(record, w.task.task_id) === id);
       if (!work) continue;
@@ -103,6 +105,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     const next = nextTier(record.session.current_tier);
     return record.session.status === 'active' &&
       now() < Date.parse(record.session.expires_at) &&
+      (!record.generation || (record.generation.status==='ready'&&certified(record))) &&
       next !== null &&
       works(record, next).length > 0 &&
       allQuestionsSubmitted(
@@ -182,7 +185,16 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   }
   async function expire(record: AssessmentRecord): Promise<void> {
     if (record.expiry) return record.expiry;
+    if (record.generation?.status === 'failed') return;
     if (now() < Date.parse(record.session.expires_at)) return;
+    if (store.durable && !certified(record)) {
+      record.session.status = 'finished';
+      record.auto_submit_error = 'TASK_VALIDATION_REQUIRED';
+      record.generation = {status:'failed',progress:{},receipts:[]};
+      record.expiry = Promise.resolve();
+      if(!record.events.some(e=>e.type==='session_end'))emit(record,'session_end',{reason:'unverified_at_expiry'},now());
+      return;
+    }
     record.session.status = 'finished';
     const expiry = (async () => {
       try {
@@ -211,69 +223,65 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   async function generatePending() {
     for (const pending of await store.pendingGenerations()) {
       if (closing.signal.aborted) return;
-      await store.withGenerationClaim(pending.id, async () => {
-        let profile: import('../contracts/internal.js').CandidateProfile | undefined;
-        let focus: import('../contracts/internal.js').FocusLane | undefined;
-        await store.withUser(pending.user_id, pending.id, async () => {
-          const record = store.assessments.get(pending.id);
-          if (!record?.generation || record.generation.status === 'ready') return;
-          profile = record.profile_snapshot ?? store.profiles.get(pending.user_id)?.profile;
-          focus = record.focus_snapshot;
-          record.generation.status = 'generating';
+      await store.withGenerationClaim(pending.id,async()=>{
+        let profile: import('../contracts/internal.js').CandidateProfile|undefined;
+        let focus: import('../contracts/internal.js').FocusLane|undefined;
+        let fallbackTasks:PrivateTask[]=[];
+        let revalidate=false;
+        await store.withUser(pending.user_id,pending.id,async()=>{
+          const record=store.assessments.get(pending.id);
+          if(!record?.generation || record.session.status!=='active' || (record.generation.status==='ready'&&certified(record)))return;
+          profile=record.profile_snapshot??store.profiles.get(pending.user_id)?.profile;
+          focus=record.focus_snapshot;
+          fallbackTasks=TIER_ORDER.flatMap(t=>works(record,t).map(w=>structuredClone(w.task)));
+          revalidate=record.generation.status==='ready'||record.generation.progress.revalidate_existing===true;
+          record.generation.status='validating';
+          if(revalidate)record.generation.progress={revalidate_existing:true};
         });
-        if (!profile) return;
-        const signal = AbortSignal.any([closing.signal, AbortSignal.timeout(options.generation_timeout_ms ?? 120_000)]);
-        let generated: { tasks: import('../contracts/internal.js').PrivateTask[]; receipts: import('../contracts/internal.js').Gate[] } | undefined;
-        let progressWrites = Promise.resolve();
-        let progressCount = 0;
-        let progressError: unknown;
-        let acceptingProgress = true;
-        const progress = (event: import('../contracts/internal.js').GenerationProgress) => {
-          if (!acceptingProgress || signal.aborted || !['generating','validating'].includes(event.status) || ++progressCount>30) return;
-          const status = event.status as 'generating'|'validating';
-          progressWrites = progressWrites.then(async () => {
-            await store.withUser(pending.user_id,pending.id,async () => {
-              const record=store.assessments.get(pending.id);
-              if (record?.generation && !['ready','failed'].includes(record.generation.status)) { record.generation.status=status; record.generation.progress={status}; }
-            });
-          }).catch(error => { progressError = error; });
+        if(!profile)return;
+        const signal=AbortSignal.any([closing.signal,AbortSignal.timeout(options.generation_timeout_ms??120000)]);
+        type Checked={tasks:PrivateTask[];receipts:import('../contracts/internal.js').Gate[]};
+        const verify=async(tasks:PrivateTask[]):Promise<Checked|undefined>=>{
+          if(!tasks.length||new Set(tasks.map(t=>t.task_id)).size!==tasks.length)return;
+          const receipts:import('../contracts/internal.js').Gate[]=[];
+          for(const task of tasks){
+            const result=await bounded(ports.validateTask({task,claimed_topics:profile!.claimed_topics},{signal}),signal);
+            if(result.kind!=='ok'||!result.value.valid||result.value.semantic_verified!==true||result.value.structural_valid!==true||!result.value.gates.length||result.value.gates.some(g=>g.status!=='pass'&&g.status!=='not_applicable'))return;
+            receipts.push(...result.value.gates);
+          }
+          return {tasks,receipts};
         };
-        try {
-          const result = await bounded(ports.generateAssessment({ profile, focus_lane: focus ?? { domain: profile.domain, skills: profile.skills, topics: profile.claimed_topics }, progress }, { signal }), signal);
-          if (result.kind === 'ok') {
-            const tasks = TIER_ORDER.map(t => result.value[t]);
-            const receipts: import('../contracts/internal.js').Gate[] = [];
-            for (const [i,task] of tasks.entries()) {
-              if (task.tier !== TIER_ORDER[i]) throw new Error('Generation tier mismatch');
-              const checked = await bounded(ports.validateTask({ task, claimed_topics: profile.claimed_topics }, { signal }), signal);
-              if (checked.kind !== 'ok' || !checked.value.valid) throw new Error('Generation validation failed');
-              if (!checked.value.gates.length || checked.value.gates.some(g=>g.status!=='pass')) throw new Error('Incomplete validation receipt');
-              receipts.push(...checked.value.gates);
+        let checked:Checked|undefined,adopt=false;
+        // Certify the fallback first. A later provider timeout may use this evidence,
+        // but never turns an unchecked fallback into a passing assessment.
+        try { checked=await verify(fallbackTasks); } catch { /* unverified */ }
+        if(!revalidate && !signal.aborted)try{
+          const result=await bounded(ports.generateAssessment({profile,focus_lane:focus??{domain:profile.domain,topics:profile.claimed_topics,skills:profile.skills},progress:()=>{}},{signal}),signal);
+          if(result.kind==='ok'){
+            const tasks=TIER_ORDER.map(t=>result.value[t]);
+            if(tasks.every((task,i)=>task.tier===TIER_ORDER[i])){
+              const proposed=await verify(tasks);
+              if(proposed){checked=proposed;adopt=true;}
             }
-            if (new Set(tasks.map(t=>t.task_id)).size !== tasks.length) throw new Error('Duplicate generated tasks');
-            generated = { tasks, receipts };
           }
-        } catch { /* An incomplete or unavailable generation always keeps reviewed seed fallback. */ }
-        finally { acceptingProgress = false; }
-        await progressWrites;
-        if (progressError) throw progressError;
-        if (closing.signal.aborted) return; // Recover the generating job on the next startup.
-        await store.withUser(pending.user_id, pending.id, async () => {
-          const record = store.assessments.get(pending.id);
-          if (!record?.generation) return;
-          const adopted = !!generated && record.session.status === 'active' && now()<Date.parse(record.session.expires_at);
-          if (generated && record.session.status === 'active' && now()<Date.parse(record.session.expires_at)) {
-            record.question_sets = {};
-            record.tier_work = {};
-            for (const task of generated.tasks) {
-              const work = { task: structuredClone(task), files: structuredClone(task.files), hint_level: 0 };
-              record.question_sets[task.tier] = [work]; record.tier_work[task.tier] = work;
-            }
-            const first = record.question_sets.novice![0]!;
-            record.task = first.task; record.files = first.files;
+        }catch { /* Preserve only an independently verified fallback, if available. */ }
+        if(closing.signal.aborted)return;
+        await store.withUser(pending.user_id,pending.id,async()=>{
+          const record=store.assessments.get(pending.id);
+          if(!record?.generation)return;
+          if(!checked || record.session.status!=='active'||now()>=Date.parse(record.session.expires_at)){
+            record.generation={status:'failed',progress:{},receipts:[]};
+            record.session.status='finished';record.auto_submit_error='TASK_VALIDATION_FAILED';
+            record.expiry=Promise.resolve();
+            if(!record.events.some(e=>e.type==='session_end'))emit(record,'session_end',{reason:'task_validation_failed'});
+            return;
           }
-          record.generation = { status: 'ready', source: adopted && generated!.tasks.some(task => task.source === 'generated') ? 'generated' : 'seed_bank',
-            progress: {}, receipts: (adopted ? generated?.receipts : undefined)?.map(g => ({ gate: g.gate, status: g.status, reason: g.reason.slice(0,300) })) ?? [] };
+          if(adopt){
+            record.question_sets={};record.tier_work={};
+            for(const task of checked.tasks){const work={task:structuredClone(task),files:structuredClone(task.files),hint_level:0};record.question_sets[task.tier]=[work];record.tier_work[task.tier]=work;}
+            const first=record.question_sets.novice![0]!;record.task=first.task;record.files=first.files;
+          }
+          record.generation={status:'ready',source:checked.tasks.some(t=>t.source==='generated')?'generated':'seed_bank',progress:{verification_policy:VALIDATION_POLICY,semantic_verified:true},receipts:checked.receipts.slice(0,30).map(g=>({gate:g.gate,status:g.status,reason:g.reason.slice(0,300)}))};
         });
       });
     }
@@ -315,7 +323,7 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
   }
   const active = (record: AssessmentRecord) => {
     if (record.session.status !== 'active' || now() >= Date.parse(record.session.expires_at)) throw new HttpProblem(409, 'ASSESSMENT_FINISHED');
-    if (record.generation && record.generation.status !== 'ready') throw new HttpProblem(409, 'ASSESSMENT_GENERATING');
+    if (record.generation && (record.generation.status !== 'ready' || !certified(record))) throw new HttpProblem(409, 'ASSESSMENT_GENERATING');
     if (record.operation) throw new HttpProblem(409, 'EXECUTION_IN_PROGRESS');
     if (record.events.length >= 900) throw new HttpProblem(429, 'EVENT_LIMIT');
   };
@@ -334,11 +342,16 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
       assessment_id: record.session.id,
       report_id: `report-${record.session.id}`,
       task_id: publicId(record, record.task.task_id),
-      available_task_ids: questions.map(q => q.task_id),
-      questions,
+      available_task_ids: record.generation && (record.generation.status!=='ready'||!certified(record)) ? [] : questions.map(q => q.task_id),
+      questions: record.generation && (record.generation.status!=='ready'||!certified(record)) ? [] : questions,
       unlock_available: canUnlock(record),
       unlocks_used: TIER_ORDER.indexOf(record.session.current_tier),
-      ...(record.generation ? { generation: record.generation } : {}),
+      ...(record.generation ? {generation:{
+        status: record.generation.status==='ready'&&!certified(record)?'queued' as const:record.generation.status,
+        progress: {}, receipts: record.generation.receipts,
+        ...(record.generation.source?{source:record.generation.source}:{}),
+        verification:{policy:VALIDATION_POLICY,semantic_verified:certified(record)&&record.generation.status==='ready'},
+      }} : {}),
       status: record.session.status,
       started_at: record.session.started_at,
       expires_at: record.session.expires_at,
@@ -652,6 +665,8 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     const record = reportId.startsWith('report-') ? store.assessments.get(reportId.slice(7)) : undefined;
     if (!record || record.session.user_id !== user(request)) throw new HttpProblem(404, 'NOT_FOUND');
     await expire(record);
+    if(record.generation?.status==='failed')throw new HttpProblem(503,'TASK_VALIDATION_FAILED');
+    if(record.session.status==='active'&&record.generation&&!certified(record))throw new HttpProblem(409,'ASSESSMENT_GENERATING');
     const saved = record.session.status === 'finished' ? await store.readReport(reportId) : undefined;
     const report = saved ?? buildReport(record);
     store.saveReport(record.session.id, report);

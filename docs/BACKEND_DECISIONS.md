@@ -1,6 +1,18 @@
 # TorqueCode backend decisions
 
-Status: K0 approved; K1 merged in PR #6. Pranav's intake/quiz/AIE (PR #7) and report builder (PR #8) are merged. K2 database/auth is committed/pushed as 1a8d9c1 and merged by the team in PR #9 (edeb1fb). Karthik reports 9/9 isolated PostgreSQL auth tests passed in the host terminal. K3/K4-lite is merged; current task is K9 Docker API wiring on karthik/k9-docker-wiring. No merge is authorized.
+Status: the independent-validation policy below describes the current change. Later sections retain the earlier architectural decisions and historical ownership context.
+
+## 2026-10-31 — independent validation policy (supersedes earlier K5/K6 descriptions)
+
+The backend now supports four reviewed Python task families: request peak, second-largest distinct integer, event deduplication, and session windows. Their fixed contracts, hand-derived examples, references and grading templates live in `generation/families.ts` and the reviewed seed bank. Expected outputs for newly assembled grading tests come from independent TypeScript implementations (sorting/exhaustive selection/brute-force windows), never from executing the candidate reference. Validation additionally compares the reference against fixed and reproducible seeded-random oracle cases in three isolated executions.
+
+The LLM can select a permitted family/scenario ID. It cannot author executable code, statements, examples or answer keys. Statements are rendered from fixed contracts and verified examples. An altered statement, unsupported family, unreviewed reference implementation, untrusted test template, missing oracle result or unavailable runner cannot receive a valid certificate. The Python topic scanner remains a supplementary indicator; the topic claim depends on the reviewed implementation provenance. Performance means the pinned workload/time assertion, not a proof of algorithmic complexity. Families without a runtime requirement report `not_applicable`.
+
+The factory seam remains compatible with K8 (`createGenerator` dependencies and `generateAssessment` return shape unchanged), and API wiring uses this implementation. A fallback now needs real semantic/structural verification too; test doubles that return only `valid: true` are deliberately insufficient. `source: generated` means an assembled reviewed template selected with the model, not novel model-written code. With no provider, reviewed seed fallback is explicitly marked `seed_bank`.
+
+Durable assessments remain unavailable until validation completes. The worker first verifies its fallback, then may attempt model selection; a provider timeout can reuse only that already-verified fallback. Without verified tasks, the job fails without grading or producing a report. Policy version and semantic evidence are stored in existing private generation JSON; no migration is needed. Public status adds optional `generation.verification` and does not expose private progress fields. On upgrade, active legacy jobs are revalidated while retaining candidate files, grades, unlocks and deadlines; a persisted revalidation marker preserves this behavior after interruption. Completed historical reports are retained without claiming retrospective certification.
+
+Limits: Python only; a bounded library with fixed reviewed difficulty tiers; contextual adaptation from profile/domain/claims, not inspection of project repositories. Finite oracle checks and reviewed contracts improve correctness assurance but are not a formal proof, universal task validation, automatic difficulty calibration, or a complete prose-leak detector. Adding a family requires review of its contract, independent oracle, hand-derived anchors, starter behavior and grading template. Change the validation policy version when correctness rules or trusted artifacts change so active sessions are rechecked.
 
 ## Scope and sources
 
