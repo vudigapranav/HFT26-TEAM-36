@@ -1,0 +1,30 @@
+/* The machine stays still; its code becomes the scroll-driven background. */
+.code-journey .hero-shell{height:175svh}
+.code-journey .hero-stage{min-height:640px}
+.code-journey .hero-composition{justify-content:center;text-align:center;isolation:isolate}
+.code-journey h1{font-size:clamp(95px,10vw,158px);font-weight:500;z-index:4;line-height:.92;letter-spacing:-.075em;text-shadow:0 0 55px var(--paper),0 0 20px var(--paper)}
+.code-journey .hero-line{transform:translateY(var(--line-y,0px))!important;opacity:var(--line-opacity,1)}
+.code-journey .hero-spark,.code-journey .sculpture-note,.code-journey .interlude-star{display:none}
+.code-journey .flow-layer{z-index:1}
+.code-journey .flow-object{pointer-events:none!important;opacity:1!important;transform:translate3d(var(--object-x,0px),var(--object-y,0px),0)!important}
+.code-journey .header{z-index:20}
+.code-journey .hero-stage{z-index:3;overflow:clip}
+.code-journey .hero-topline,.code-journey .hero-bottom{z-index:4;position:relative}
+.code-background{position:fixed;inset:0;width:100%;height:100%;z-index:9;pointer-events:none;contain:strict;opacity:var(--code-handoff-opacity,1);will-change:opacity}
+.code-journey .interlude h2{opacity:var(--story-handoff-opacity,0);filter:blur(var(--story-handoff-blur,5px));transform:translate3d(var(--story-x,0px),calc(var(--story-y,0px) + var(--story-handoff-rise,40px)),0) scale(var(--story-scale,1));will-change:transform,opacity,filter}
+.code-journey .journey-nav{z-index:25}
+.code-journey .work-stage{background:rgba(241,240,233,.96)}
+.code-journey .about{background:rgba(241,240,233,.96)}
+.code-journey .project-image{isolation:isolate}
+.code-journey .project-cursor{z-index:21}
+body:has(dialog[open]) .code-background{visibility:hidden}
+@media(max-width:750px){
+ .code-journey .hero-shell{height:170svh}
+ .code-journey .hero-stage{position:sticky;height:100svh;min-height:600px;padding-top:115px;padding-bottom:24px}
+ .code-journey .hero-composition{flex:1;min-height:0;align-items:center;margin-top:15px}
+ .code-journey h1{font-size:clamp(64px,15.8vw,105px);line-height:.98}
+ .code-journey .hero-bottom{padding-bottom:10px;opacity:var(--hero-bottom-opacity,1)}
+ .code-journey .flow-object{max-width:none}
+}
+@media(prefers-reduced-motion:reduce){.code-background{display:none}}
+

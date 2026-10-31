@@ -1,0 +1,45 @@
+.logo{font-size:29px;letter-spacing:-1.6px;font-weight:800;white-space:nowrap}
+.logo .logo-code{font-size:inherit;vertical-align:baseline;display:inline;margin:0;letter-spacing:-1.6px;font-weight:450}
+.logo .logo-dot{color:var(--orange);font-size:18px;vertical-align:top;margin:0 0 0 4px}
+.availability{margin-left:3%;font-size:8px}
+.hero-role{max-width:240px}
+.code-journey h1{font-size:clamp(88px,9.8vw,151px)}
+.project-image.intake{background:#e0e6d3}.project-image.assessment{background:#9b8ac9}.project-image.sandbox{background:#23382d}.project-image.report{background:#e9bba1}
+.sandbox .image-label{color:#e0e9d3}
+.journey-enabled .work-heading h2{font-size:clamp(38px,4.7vw,70px)}
+.journey-enabled .filter-group button{padding:10px 13px}
+.journey-enabled .concept-note{max-width:265px;font-size:7px}
+.about-art{background:#dfe5d5}
+.journey-enabled .about-asterisk{font-family:Consolas,monospace;font-size:clamp(75px,9vw,145px);font-weight:500;letter-spacing:-20px}
+.project-status{margin-top:35px;padding:25px 0;display:grid;grid-template-columns:170px 1fr;gap:15px 35px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.eyebrow{font-size:8px;letter-spacing:1.1px;line-height:1.8;font-weight:600}
+.project-status p{font-size:12px;line-height:1.85;color:#666a5e;max-width:780px}
+.project-status a{grid-column:2;font-size:11px;justify-self:start;border-bottom:1px solid var(--line);padding-bottom:6px}
+.team-heading{display:flex;align-items:end;justify-content:space-between;margin-top:60px;margin-bottom:25px}
+.team-heading h3{font-size:43px;line-height:1.1;letter-spacing:-2px;font-weight:500}
+.team-grid{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line)}
+.team-grid article{padding:22px 18px 16px 0;border-bottom:1px solid var(--line)}
+.team-grid article+article{padding-left:18px;border-left:1px solid var(--line)}
+.team-grid article>span{font-size:7px;letter-spacing:.8px;color:var(--muted)}
+.team-grid h4{font-size:15px;letter-spacing:-.3px;font-weight:600;line-height:1.35;margin:17px 0 12px;min-height:40px}
+.team-grid p{font-size:10px;line-height:1.8;color:#686c60}
+.contact-bottom>p{max-width:450px}
+.dialog-content h2{font-size:43px;letter-spacing:-2px}
+.dialog-content>p{font-size:14px}
+.about-copy .about-line{white-space:nowrap}
+@media(max-width:1000px){.team-grid{grid-template-columns:repeat(3,1fr)}.team-grid article:nth-child(4){border-left:0;padding-left:0}.project-status{grid-template-columns:145px 1fr}.journey-enabled .work-heading h2{font-size:4.7vw}}
+@media(max-width:750px){
+ .header{gap:10px}.header .logo{font-size:24px;letter-spacing:-1.4px}.logo .logo-code{letter-spacing:-1.4px}.logo .logo-dot{font-size:13px}.availability{font-size:6px;letter-spacing:.3px;margin-left:auto;margin-right:6px;gap:7px}
+ .code-journey h1{font-size:clamp(61px,14.7vw,100px)}
+ .journey-enabled .work-heading h2{font-size:58px}
+ .journey-enabled .filter-group button{font-size:10px;padding:8px 13px}
+ .journey-enabled .project-info{display:block}.journey-enabled .project-type{display:block;margin-top:8px}
+ .project-status{grid-template-columns:1fr;gap:15px}.project-status a{grid-column:1}.project-status p{font-size:11px}
+ .team-heading{display:block;margin-top:45px}.team-heading h3{font-size:39px;margin-top:15px}
+ .team-grid{grid-template-columns:1fr 1fr}.team-grid article:nth-child(4){border-left:1px solid var(--line);padding-left:18px}.team-grid article:nth-child(odd){border-left:0;padding-left:0}
+ .team-grid h4{font-size:14px}.team-grid p{font-size:10px}
+ .journey-enabled .about-asterisk{font-size:100px;letter-spacing:-15px}
+ .contact .section-label>span:last-child{font-size:6px}
+ .email-wrap>a{font-size:22px}.dialog-content h2{font-size:35px;letter-spacing:-1.5px}
+ footer .logo{font-size:25px}footer p{font-size:6px}
+}
