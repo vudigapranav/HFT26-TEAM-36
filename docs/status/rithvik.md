@@ -405,3 +405,51 @@ Base: origin/main `5545766` (K10 PR 42 merged). Branch `rithvik/runner-admission
 | D2 | Low | `deploy/stop.sh` kills **whatever** listens on the backend port if the graceful stop fails; it doesn't verify the process is ours. | `deploy/lib.sh` | Record the native PID at start (have the backend write it) and check the command line before killing. |
 | D3 | Medium | IPC limits are per message (1 MiB) and per call count (10,000), with no cumulative byte budget per run. A run could relay up to about 10 GB in the worst case, bounded in practice only by the time limit and the grader's memory. | `runner/dockerRunner.ts` | Add a cumulative relayed-bytes budget per run (e.g. 32 MiB). Over budget means the worker is killed and the tests are `error`. |
 | D4 | Medium | The guarded assistant blocks code fragments, not prose: "loop over every element instead" can still give away a one-token fix. | `llm/guards.ts`, `llm/assistant.ts` | A reference-aware prose check (the tokens that differ between starter and reference, mentioned in prose), plus a per-task cap on assistant messages (TODO(OPEN-ASSISTANT-LIMITS)). |
+
+## 2026-10-31 05:30 — R6b — cloud VM + Vercel: PREPARED, NOT DEPLOYED
+Base: origin/main `a32c5cb`. Branch `rithvik/r6b-cloud`; only `deploy/cloud/` and status changed. **No VM had been provided**, so nothing has run on a VM or a public URL.
+- **Prepared:**
+  - `deploy/cloud/setup-vm.sh`: Ubuntu 24.04, idempotent. Installs Docker Engine + Compose, Node 24, Caddy and Python 3. Firewall: 443 plus SSH from `ADMIN_SSH_CIDR` only. Dedicated `torquecode` user. Then PostgreSQL in Compose on 127.0.0.1, runner image, build, migrations, secrets files (640), Caddy, systemd, and a local health check. It prints the proxy secret once.
+  - `torquecode-backend.service`: hardened, but deliberately without `PrivateTmp`, because dockerd must bind-mount the runner's `/tmp` workspaces.
+  - `Caddyfile`: auto-HTTPS on 443. Requests without the `X-TorqueCode-Proxy` secret get 403; the header is stripped; `X-Forwarded-For` is set from Vercel's `X-Real-IP`.
+  - `backend.env.example`, `vercel.json.example`, and `README.md` (security model, install, operations, recovery, verification checklist).
+- **Checked here:**
+  - `bash -n setup-vm.sh` OK.
+  - The official `caddy:2` image reports the Caddyfile as `Valid configuration`.
+  - The gate, run locally on HTTP: no secret gives **403**, a wrong secret **403**, the correct secret passes to the upstream (502 with no backend running).
+  - Not checked: the setup script on Ubuntu, ACME certificates, systemd, ufw, the Vercel middleware and rewrite, and every item on the README's verification checklist.
+- **Blockers and owners:**
+  - **Pranav:** the VM and DNS for `<backend-host>`.
+  - **Karthik (K11):** `TRUST_PROXY`, so the client IP is read from one trusted hop (Caddy on loopback); without it, every user shares one IP and the auth rate limiter blocks them. Also PostgreSQL persistence for assessments, so restarts keep them.
+  - **Akshit:** `src/frontend/vercel.json` and `middleware.ts` as given in `deploy/cloud/README.md`, the `TORQUECODE_PROXY_SECRET` env var in Vercel, relative `/api` calls, and sanitized rendering of generated task text.
+- **Honest risk:** the `torquecode` user is in the `docker` group, which is root-equivalent on the VM. Use a dedicated VM. Rootless Docker hasn't been tried (it needs cgroup v2 delegation to keep R3's limits).
+
+## 2026-10-31 — R6b review corrections: still PREPARED, NOT DEPLOYED
+Branch `rithvik/r6b-cloud`; only `deploy/cloud/` and status changed. The PR stays a **draft** until Pranav provides the VM and the end-to-end checks pass. The backend stays on the host, and no Docker socket is mounted in any container.
+1. **Proxy secret in the Caddy access log.**
+   - Failing condition (reproduced locally with Caddy): a request through the gate was logged with `"X-Torquecode-Proxy": ["<secret>"]` in clear. Caddy redacts only `Cookie`/`Authorization` itself.
+   - Fix: the Caddyfile's log `format filter` deletes `request>headers>X-Torquecode-Proxy`.
+   - Test: 3 requests (two header spellings, one wrong guess) left 0 occurrences of either value in the log; the gate still gave 502/502/403; `caddy validate` passes.
+   - Limitation: checked on local HTTP, not on the VM's HTTPS site.
+2. **Secret regenerated on every `setup-vm.sh` rerun.**
+   - Failing condition: `PROXY_SECRET` was always regenerated, so a rerun left Vercel holding the old one and every request got 403.
+   - Fix: `deploy/cloud/proxy-secret.sh` (`ensure_proxy_secret`) reuses a well-formed secret already in `/etc/caddy/torquecode.env`. Rotation happens only with `ROTATE_PROXY_SECRET=1`. The secret is printed only when generated or rotated, and a rotation prints a 403 warning.
+   - Test: `bash deploy/cloud/test-proxy-secret.sh` passes 8/8 (generate, rerun keeps it, explicit rotation changes it, missing or malformed secret regenerates); `bash -n setup-vm.sh` OK.
+   - Limitation: the full script has not run on Ubuntu.
+3. **Vercel middleware trusted a client header.**
+   - Failing condition: the README snippet copied the incoming `x-real-ip` header and left any client-sent `x-forwarded-for`, `forwarded` or `x-torquecode-proxy` in the request. It sent an empty secret when the env var was missing.
+   - Fix: `deploy/cloud/vercel/middleware.ts` + `torquecode-proxy-headers.mjs`.
+     - The client IP comes only from `ipAddress(request)` (`@vercel/functions`).
+     - All client forwarding/identity headers and any client-sent `x-torquecode-proxy` are deleted.
+     - `x-real-ip` and `x-forwarded-for` are set to that one IP, and the secret is added.
+     - It fails closed (503 with no secret, 400 with no valid IP).
+   - Test: `node --test deploy/cloud/vercel/torquecode-proxy-headers.test.mjs` passes 4/4 (spoofed values gone, IP not appended to a spoofed chain, cookie/origin kept, fail-closed cases, input not mutated).
+   - Limitations:
+     - `middleware.ts` wasn't type-checked or run on Vercel (`@vercel/functions` isn't a repo dependency; Akshit adds it with the files).
+     - Vercel's docs don't explicitly say that middleware-modified request headers reach an **external** rewrite destination; README checklist items 8–9 verify this live.
+4. **Not deployment-ready.** Nothing has run on a VM, Caddy with ACME, systemd, ufw or Vercel. `TRUST_PROXY` (Karthik, K11) is still a blocker.
+
+## 2026-10-31 — R6b maintainer merge review
+- Reviewed and merged only as a prepared deployment kit, per Pranav's request; no VM deployment or public URL verification is claimed.
+- Fixed setup health polling: exhausting all attempts now returns failure rather than inheriting a successful final sleep. Added three command-fixture regressions for immediate success, eventual success and exhausted failure.
+- Local checks: proxy-secret 8 passed, health polling 3 passed, proxy-header 4 passed; setup shell syntax and diff checks passed. Existing Caddy/middleware deployment verification limitations remain documented in deploy/cloud/README.md.
