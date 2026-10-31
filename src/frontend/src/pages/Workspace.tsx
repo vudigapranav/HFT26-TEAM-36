@@ -92,7 +92,8 @@ export default function Workspace(){
  function edit(value:string|undefined){if(value===undefined||!taskRef.current)return;const current=taskRef.current;
   // Attribute the change to the file whose Monaco model changed, not the selected tab: on a tab switch
   // Monaco can report the previous model's text, which used to overwrite another file.
-  const modelPath=editorRef.current?.getModel()?.uri.path??'';const idx=current.files.findIndex(f=>modelPath.endsWith(`/${current.task_id}/${f.path}`));
+  // No attached model (editor not mounted yet, or a test double): fall back to the selected tab.
+  const modelPath=editorRef.current?.getModel?.()?.uri.path;const idx=modelPath?current.files.findIndex(f=>modelPath.endsWith(`/${current.task_id}/${f.path}`)):fileIndex;
   if(idx<0||!current.files[idx]?.editable||current.files[idx]!.content===value)return;const next={...current,files:current.files.map((f,i)=>i===idx?{...f,content:value}:f)};taskRef.current=next;version.current++;dirtyRef.current=true;setDirty(true);setSaveState('Unsaved changes');setTask(next);}
  async function execute(mode:'run'|'submit'){
   if(workingRef.current||!taskRef.current)return;workingRef.current=true;setWorking(mode);setNotice(null);
