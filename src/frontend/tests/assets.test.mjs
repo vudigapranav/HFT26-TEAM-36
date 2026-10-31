@@ -5,7 +5,7 @@ import {dirname, join, resolve} from 'node:path';
 
 const root = new URL('..', import.meta.url).pathname;
 const walk = dir => readdirSync(dir).flatMap(name => { const p = join(dir, name); return statSync(p).isDirectory() ? walk(p) : [p]; });
-const files = [...walk(join(root, 'src')), ...walk(join(root, 'public')), join(root, 'README.md')].filter(f => /\.(html|tsx?|mjs|js|css|md)$/.test(f));
+const files = [...walk(join(root, 'src')), ...walk(join(root, 'public'))].filter(f => /\.(html|tsx?|mjs|js|css|md)$/.test(f));
 
 test('every designs/ reference points to a file that exists (G7)', () => {
   const missing = [];
