@@ -1,0 +1,22 @@
+{
+  "candidate": { "name": "Arjun Rao", "email": "arjun.rao@example.org" },
+  "projects": [
+    {
+      "name": "LogPipe",
+      "description": "High-throughput log ingestion service that batches, deduplicates and stores machine logs.",
+      "tech_stack": ["Go", "Kafka", "Redis", "PostgreSQL", "Docker"],
+      "role": "Infrastructure engineer",
+      "highlights": ["Processes 200k events per second", "Sliding-window error-rate alerts"]
+    },
+    {
+      "name": "MiniKV",
+      "description": "Embedded key-value store with an LRU cache and write-ahead log.",
+      "tech_stack": ["C++", "CMake", "Linux", "SQLite"],
+      "role": "Systems developer",
+      "highlights": ["O(1) LRU eviction with a hash map and linked list", "Crash recovery from the write-ahead log"]
+    }
+  ],
+  "tech_stack": ["Go", "C++", "Java", "PostgreSQL", "Redis", "Kafka", "Docker", "Linux"],
+  "skills": ["Microservices", "Caching", "SQL", "Distributed Systems"],
+  "dsa_topics_solved": ["arrays", "hashing", "sliding window", "linked list", "heap", "two pointers"]
+}

@@ -1,0 +1,22 @@
+{
+  "candidate": { "name": "Kabir Shah", "email": "kabir.shah@example.org" },
+  "projects": [
+    {
+      "name": "LogSentinel",
+      "description": "Detects brute-force login attempts from auth logs in near real time.",
+      "tech_stack": ["Python", "Wireshark", "Nmap"],
+      "role": "Security engineer",
+      "highlights": ["Sliding-window anomaly detection", "Alert deduplication"]
+    },
+    {
+      "name": "WebAudit",
+      "description": "Automated checks for OWASP Top 10 issues in small web apps.",
+      "tech_stack": ["Burp Suite", "Python", "JWT", "OAuth"],
+      "role": "Pentester",
+      "highlights": ["Found 3 XSS and 1 SQL injection in a CTF target", "Token-handling review"]
+    }
+  ],
+  "tech_stack": ["Python", "Burp Suite", "Wireshark", "Nmap", "Metasploit"],
+  "skills": ["Penetration Testing", "Cryptography", "OWASP", "CTF"],
+  "dsa_topics_solved": ["arrays", "hashing", "sliding window", "strings", "graphs"]
+}
