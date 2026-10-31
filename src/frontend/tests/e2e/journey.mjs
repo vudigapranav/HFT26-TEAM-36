@@ -201,8 +201,17 @@ try{
  });
  const second=await browser.newContext({viewport:{width:1280,height:900}});
  const other=await second.newPage();
- await step(other,'j portfolio without arrays: clear SEED_TOPIC_UNAVAILABLE message',async()=>{
+ await step(other,'b2 PDF portfolio is drafted as JSON in the browser and validates',async()=>{
   await register(other,`journey-b-${Date.now()}@example.com`,password);await at(other,'portfolio');
+  await other.locator('input[type=file]').setInputFiles(join(repo,'src','frontend','public','samples','torquecode-portfolio.pdf'));
+  await other.getByText('Drafted from your PDF. Check it before validating.').waitFor({timeout:30000});
+  const draft=JSON.parse(await other.locator('#portfolio-json').inputValue());
+  assert(draft.candidate.email==='ananya.raghavan@example.com','email not drafted from the PDF');
+  await other.getByRole('button',{name:/Validate/}).click();
+  await other.getByText('Portfolio validated').waitFor({timeout:15000});
+  return `${draft.projects.length} projects, topics: ${draft.dsa_topics_solved.join(', ')}`;
+ });
+ await step(other,'j portfolio without arrays: clear SEED_TOPIC_UNAVAILABLE message',async()=>{
   await uploadPortfolio(other,portfolio('typo-topics.json'));
   await other.getByText('Portfolio validated').waitFor({timeout:15000});
   await other.getByRole('button',{name:'Continue to focus quiz'}).click();
