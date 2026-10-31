@@ -124,11 +124,12 @@ describe('legitimate use is not blocked', () => {
 });
 
 describe('output guard', () => {
-  it('a full solution from the model is regenerated once, then blocked', async () => {
+  it('a full solution from the model is regenerated once (plain prose), then blocked', async () => {
     const h = setup({ replies: [FULL_SOLUTION, FULL_SOLUTION] });
     expect(await h.assistant(context(), ctx())).toEqual(blocked);
     expect(h.calls).toHaveLength(2); // exactly one regeneration, never a loop
     expect(h.calls[1]!.messages.at(-1)!.content).toMatch(/previous draft was rejected/);
+    expect(h.calls[1]!.messages.at(-1)!.content).toMatch(/plain prose only: no backticks/);
     expect(h.events.at(-1)).toMatchObject({ type: 'assistant_blocked', payload: { guard: 'output' } });
   });
 

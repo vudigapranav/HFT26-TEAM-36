@@ -87,6 +87,9 @@ export function buildMessages(input: AssistantContext, nonce: string, retryNote?
   return [{ role: 'system', content: SYSTEM_POLICY(nonce) }, { role: 'user', content: user }];
 }
 
+// Two drafts fit the API's 8.5 s assistant deadline; a third model call does not.
+const MAX_DRAFTS = 2;
+
 export function createAssistant(deps: AssistantDeps): Ports['assistantReply'] {
   const emit = (event: AssistantEvent) => { try { deps.onEvent?.(event); } catch { /* event sinks never break the reply */ } };
 
@@ -123,7 +126,7 @@ export function createAssistant(deps: AssistantDeps): Ports['assistantReply'] {
 
     const nonce = randomBytes(6).toString('hex');
     let retryNote: string | undefined;
-    for (let draft = 1; draft <= 2; draft++) {
+    for (let draft = 1; draft <= MAX_DRAFTS; draft++) {
       const result = await deps.chat({
         purpose: 'assistant', model: 'default', max_tokens: ASSISTANT_LIMITS.maxTokens,
         messages: buildMessages({ ...input, message }, nonce, retryNote),
@@ -138,9 +141,10 @@ export function createAssistant(deps: AssistantDeps): Ports['assistantReply'] {
         const value: AssistantValue = { blocked: false, reply: result.value.content };
         return result.kind === 'fixture' ? { kind: 'fixture', value } : { kind: 'ok', value };
       }
-      // One bounded regeneration, then a generic block.
-      if (draft === 2) return blocked('output', verdict.code, false);
-      retryNote = `Your previous draft was rejected (${verdict.code}): it gave away part of the solution. Answer again with guidance only: no corrected code or expression (not even one token), no "change X to Y", no confirmation of a proposed fix. Explain the symptom and ask one guiding question.`;
+      // Bounded regeneration, then a generic block. Every draft passes the same deterministic guard.
+      if (draft === MAX_DRAFTS) return blocked('output', verdict.code, false);
+      // The retry is plain prose: it can't carry a corrected expression, so models that keep leaking still give a usable hint.
+      retryNote = `Your previous draft was rejected (${verdict.code}): it gave away part of the solution. Answer again with guidance only, in plain prose only: no backticks, no code, no corrected expression (not even one token), no "change X to Y", no confirmation of a proposed fix. At most three sentences describing what to investigate, ending with one guiding question.`;
     }
     return blocked('output', 'unreachable', false);
   };
