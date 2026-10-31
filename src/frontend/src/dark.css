@@ -1,0 +1,73 @@
+/* Dark theme: same warm, low-saturation palette as the light design, inverted. Activated by
+   <html data-theme="dark"> (theme.ts). Token swap first, then the light surfaces that are hardcoded elsewhere. */
+:root[data-theme="dark"]{--paper:#171915;--ink:#e6e8dd;--sage:#232920;--muted:#9ba091;--line:#3a3f34;--dark:#10120e;--green:#8fae86;color-scheme:dark}
+:root[data-theme="dark"] body{background:var(--paper);color:var(--ink)}
+
+/* Buttons and chips */
+[data-theme="dark"] .pill{background:#e6e8dd;color:#171915}
+[data-theme="dark"] .pill:hover:not(:disabled){background:#cfd3c4}
+[data-theme="dark"] .pill.outline{background:transparent;color:var(--ink);border-color:var(--line)}
+[data-theme="dark"] .pill.outline:hover{background:#262a22}
+[data-theme="dark"] .pill.accent{background:var(--orange);color:#fff}
+[data-theme="dark"] .icon-button:hover{background:#ffffff10}
+[data-theme="dark"] .chip.filled{background:#2f3729}
+[data-theme="dark"] .progress-line{background:#2c3127}
+
+/* Panels, inputs, alerts */
+[data-theme="dark"] .panel{background:#1d201a;border-color:var(--line)}
+[data-theme="dark"] .panel.sage,[data-theme="dark"] .quiz-side{background:#232920}
+[data-theme="dark"] .input,[data-theme="dark"] .json-editor,[data-theme="dark"] textarea{background:#11130f;color:var(--ink);border-color:var(--line)}
+[data-theme="dark"] .input:focus{background:#0d0f0b}
+[data-theme="dark"] .alert{background:#2e2817;border-color:#6b5a2c;color:#efe3c4}
+[data-theme="dark"] .alert.error{background:#33201b;border-color:#7a3d2e;color:#f6d8cf}
+[data-theme="dark"] .form-error,[data-theme="dark"] .inline-field-errors{background:#fa4b2314;color:#ffb39c}
+[data-theme="dark"] .code-sheet{background:#232920;border-color:#3f4636}
+[data-theme="dark"] .code-sheet:nth-child(2){background:#2a3125}
+[data-theme="dark"] .dropzone,[data-theme="dark"] .portfolio-grid .dropzone{background:linear-gradient(125deg,#1f241b,#1a1d17);border-color:#3f4636}
+[data-theme="dark"] .dropzone.dragover{background:#263022}
+[data-theme="dark"] .portfolio-grid>.panel:first-child,[data-theme="dark"] .quiz-card{background:#1d201a}
+[data-theme="dark"] .intake-tag,[data-theme="dark"] .portfolio-grid .chip,[data-theme="dark"] .quiz-side .chip{background:#262b21;border-color:#3f4636;color:var(--ink)}
+[data-theme="dark"] .upload-icon,[data-theme="dark"] .outline-avatar,[data-theme="dark"] .insignia-path>span{background:#232920;border-color:#454c3a}
+[data-theme="dark"] .profile-outline i{background:#3a4232}
+[data-theme="dark"] .option,[data-theme="dark"] .quiz-card .option{background:#1a1d17;border-color:#3a3f34;color:var(--ink)}
+[data-theme="dark"] .option:hover,[data-theme="dark"] .quiz-card .option:hover{background:#242a20}
+[data-theme="dark"] .option.selected,[data-theme="dark"] .quiz-card .option.selected{background:#2a3324;border-color:#8fae86}
+[data-theme="dark"] .focus-ring>div{background:#232920}
+[data-theme="dark"] .ready-art figcaption{background:#171915ed}
+[data-theme="dark"] .mode-choice:has(input:checked){background:#262d21}
+[data-theme="dark"] .receipts li[data-status=pass] span{color:#9fd08a}
+[data-theme="dark"] .receipts li[data-status=fail] span{color:#ff8f72}
+
+/* Workspace (the editor area is already dark) */
+[data-theme="dark"] .task-panel{background:#1a1c17}
+[data-theme="dark"] .task-statement code{background:#262b21}
+[data-theme="dark"] .task-statement pre{background:#11130f}
+[data-theme="dark"] .question-tab{border-color:var(--line);color:var(--ink)}
+[data-theme="dark"] .question-tab.active{background:#e6e8dd;color:#171915}
+[data-theme="dark"] .unlock-action{background:#22301e}
+[data-theme="dark"] .workspace-alert{background:#33291a;color:#f1e2bf}
+[data-theme="dark"] .assistant{background:#1b1e18}
+[data-theme="dark"] .assistant-desc,[data-theme="dark"] .chat-caption{color:#9aa38b}
+[data-theme="dark"] .chat-bubble{background:#252a21;color:var(--ink)}
+[data-theme="dark"] .chat-message.user-message .chat-bubble{background:#2f3a28}
+[data-theme="dark"] .chat-message.hint-message .chat-bubble{background:#27321f;border-color:#4b5c3c}
+[data-theme="dark"] .chat-compose textarea{background:#11130f;border-color:#3f4636;color:var(--ink)}
+
+/* Report */
+[data-theme="dark"] .evidence-ribbon{background:#232920}
+[data-theme="dark"] .mini-bar,[data-theme="dark"] .metric-bar{background:#2c3127}
+[data-theme="dark"] .focus-areas span{background:#2a3125}
+[data-theme="dark"] .integrity-summary[data-status="clean"]{background:#1f2a1c}
+[data-theme="dark"] .integrity-summary[data-status="minor"]{background:#2e2817}
+[data-theme="dark"] .integrity-summary[data-status="review"]{background:#3a1f18;border-color:#7a3d2e}
+
+/* Skeletons, dialogs, overlays */
+[data-theme="dark"] .skeleton-line{background:#262a22}
+[data-theme="dark"] .skeleton-block{background:#1f231c}
+[data-theme="dark"] dialog{background:#1d201a;color:var(--ink)}
+[data-theme="dark"] .integrity-card,[data-theme="dark"] .advance-card,[data-theme="dark"] .fullscreen-banner{background:#1d201a;color:var(--ink);border-color:var(--line)}
+[data-theme="dark"] #toast{background:#e6e8dd;color:#171915}
+
+.theme-toggle{display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid var(--line);border-radius:999px;padding:5px 11px;color:inherit;font:inherit;font-size:11px;cursor:pointer}
+.theme-toggle:hover{border-color:var(--ink)}
+.theme-toggle:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
