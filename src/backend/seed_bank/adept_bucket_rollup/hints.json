@@ -1,0 +1,5 @@
+[
+  "Work out by hand which positions belong to the first, second and last bucket when the length is not a multiple of the size.",
+  "Validate the values before grouping them, then decide what the peak lookup should return when there are no buckets at all.",
+  "Start a new running total whenever a position begins a bucket, and replace the best bucket only on a strictly larger total."
+]

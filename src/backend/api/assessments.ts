@@ -433,11 +433,14 @@ export async function registerAssessments(app: FastifyInstance, ports: Ports, op
     for (const tier of TIER_ORDER) {
       if (tier === 'novice') continue;
 
+      // One reviewed fallback question per higher set: the first compatible seed in bank
+      // order, so richer claimed topics (hashing, sliding_window) keep their own family and
+      // arrays-only families cover every other portfolio.
       const selected = (options.seed_bank?.[tier] ?? []).filter(candidate =>
         candidate.dsa_topics.every(topic =>
           stored.profile.claimed_topics.includes(topic)
         )
-      );
+      ).slice(0, 1);
 
       if (!selected.length) continue;
 

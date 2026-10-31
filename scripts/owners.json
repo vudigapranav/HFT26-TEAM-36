@@ -73,7 +73,9 @@
     "src/backend/generation/*",
     "src/backend/contracts/internal.ts",
     "src/backend/api/postgres-assessment-store.ts",
-    "src/backend/api/wiring.ts"
+    "src/backend/api/wiring.ts",
+    "src/backend/api/seed-bank.ts",
+    "src/backend/seed_bank/*"
   ],
   "akshit": [
     "src/frontend/*",

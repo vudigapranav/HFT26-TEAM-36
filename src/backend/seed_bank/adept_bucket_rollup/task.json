@@ -1,0 +1,32 @@
+{
+  "task_id": "seed-adept-bucket-rollup",
+  "tier": "adept",
+  "domain": "backend",
+  "language": "python",
+  "task_type": "feature",
+  "title": "Build a bucketed traffic rollup",
+  "statement_md": "# Bucketed traffic rollup\n\nA monitoring service stores one nonnegative request count per second and needs a rollup\nfeature for its dashboard. Implement it across two files: `app/rollup.py` and\n`app/service.py`. `app/models.py` is trusted, working support code and must remain unchanged.\n\n`validate_values(values)` (in `app/models.py`) returns a copy of the values and raises ValueError\nunless every value is a nonnegative integer (bool is rejected).\n\n`rollup(values, size)` validates the values, then returns the sum of each consecutive bucket of\n`size` values, in order. The last bucket may be shorter. Empty input returns []. A size below 1\nraises ValueError.\n\n`peak_bucket(values, size)` returns {\"index\": i, \"total\": t} for the bucket with the largest\ntotal, choosing the earliest bucket on ties. With no values it returns None. Invalid values or\nsizes raise ValueError. Do not mutate inputs. Only standard-library code is allowed.\n\nExample 1:\nInput: rollup([4, 1, 0, 3, 2], 2)\nOutput: [5, 3, 2]\n\nExample 2:\nInput: peak_bucket([2, 3, 5, 0, 1, 4], 2)\nOutput: {\"index\": 0, \"total\": 5}\n",
+  "dsa_topics": [
+    "arrays"
+  ],
+  "source": "seed_bank",
+  "limits": {
+    "wall_time_ms": 5000,
+    "memory_mb": 128,
+    "cpu_count": 1,
+    "pids": 32,
+    "output_bytes": 65536
+  },
+  "f2p_ids": [
+    "tests/test_visible.py::test_rollup_sums_consecutive_buckets",
+    "tests/test_visible.py::test_peak_bucket_prefers_earliest_tie",
+    "tests/test_hidden.py::test_empty_values_and_bad_sizes",
+    "tests/test_hidden.py::test_rollup_matches_direct_bucket_sums",
+    "tests/test_hidden.py::test_invalid_values_raise_through_the_feature"
+  ],
+  "p2p_ids": [
+    "tests/test_visible.py::test_validate_values_copies_input",
+    "tests/test_visible.py::test_validate_values_rejects_bad_values",
+    "tests/test_hidden.py::test_validate_values_accepts_empty_and_zero"
+  ]
+}

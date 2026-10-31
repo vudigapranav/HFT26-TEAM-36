@@ -1,0 +1,33 @@
+{
+  "task_id": "seed-master-error-budget",
+  "tier": "master",
+  "domain": "backend",
+  "language": "python",
+  "task_type": "bug_fix",
+  "title": "Repair error-budget span totals and throughput",
+  "statement_md": "# Error-budget span report\n\nA reliability service records how many errors occurred in each minute and answers many\nspan queries: \"how many errors happened between minute `start` and minute `end`?\"\nThree regressions were introduced: some span totals are wrong, a span exactly at the budget is\nflagged as over budget, and large batches of queries are much too slow. Repair them without\nchanging the APIs. Only `app/prefix.py` and `app/report.py` are editable. `app/parser.py` is\ntrusted, working support code and must remain unchanged.\n\nEach nonblank input line is `minute|errors`. Whitespace is stripped, blank lines are ignored,\nand malformed records (wrong field count, empty minute, errors that are not a nonnegative\ninteger) raise ValueError.\n\n`build_prefix(counts)` returns a list of length len(counts) + 1 whose entry i is the total of\ncounts[:i]. `range_total(prefix, start, end)` returns the total of the half-open span\n[start, end) and raises ValueError unless 0 <= start <= end <= len(counts).\n`budget_report(lines, queries, budget)` returns one dictionary per (start, end) query, in query\norder: {\"start\", \"end_exclusive\", \"errors\", \"over_budget\"}. A span is over budget only when its\nerrors are strictly greater than the budget. A negative budget or an out-of-range span raises\nValueError. `count_over_budget(lines, queries, budget)` returns how many queried spans are over\nbudget. Do not mutate inputs.\n\nUp to 30000 records and 12000 queries are assessed. An assessed full batch must finish in under\n0.3 s on the runner; the whole task has a 10-second wall-clock limit. Only standard-library code\nis allowed. This is a measured workload constraint, not a proof of asymptotic complexity.\n\nExample 1:\nInput: lines=[\"m1|2\", \"m2|0\", \"m3|5\"], queries=[(0, 2), (1, 3)], budget=2\nOutput: [{\"start\": 0, \"end_exclusive\": 2, \"errors\": 2, \"over_budget\": false},\n         {\"start\": 1, \"end_exclusive\": 3, \"errors\": 5, \"over_budget\": true}]\n\nExample 2:\nInput: build_prefix([3, 1, 4])\nOutput: [0, 3, 4, 8]\n",
+  "dsa_topics": [
+    "arrays"
+  ],
+  "source": "seed_bank",
+  "limits": {
+    "wall_time_ms": 10000,
+    "memory_mb": 128,
+    "cpu_count": 1,
+    "pids": 32,
+    "output_bytes": 65536
+  },
+  "f2p_ids": [
+    "tests/test_visible.py::test_report_flags_only_spans_over_budget",
+    "tests/test_visible.py::test_prefix_totals_for_mixed_counts",
+    "tests/test_hidden.py::test_reports_match_direct_sums",
+    "tests/test_hidden.py::test_prefix_and_span_totals_agree",
+    "tests/test_hidden.py::test_budget_report_performance"
+  ],
+  "p2p_ids": [
+    "tests/test_visible.py::test_parser_reads_records",
+    "tests/test_visible.py::test_range_total_rejects_bad_spans",
+    "tests/test_hidden.py::test_empty_and_invalid_inputs",
+    "tests/test_hidden.py::test_parser_rejects_malformed_records"
+  ]
+}
